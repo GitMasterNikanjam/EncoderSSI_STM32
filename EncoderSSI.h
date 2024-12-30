@@ -38,6 +38,19 @@
 #include <math.h>
 #include "TimerControl.h"
 
+// ######################################################################################
+// Define global macros:
+
+/**
+ * @namespace EncoderSSI_Namespace
+ * @brief The namespace for safety protection.
+ *  */ 
+namespace EncoderSSI_Namespace
+{
+    #define EncoderSSI_COM_Mode_SPI     0
+    #define EncoderSSI_COM_Mode_GPIO    1
+}
+
 // #######################################################################################
 // LPF class:
 
@@ -133,6 +146,8 @@ namespace EncoderSSI_Namespace
 /**
  * @class EncoderSSI
  * @brief EncoderSSI class.
+ * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
+ * @warning - Set The TimerControl object that want used for this object from outside of this object before using the init method of this object. 
  *  */ 
 class EncoderSSI
 {
@@ -148,20 +163,44 @@ class EncoderSSI
         struct ParametersStructure
         {
             /**
-             * @brief SPI handle
-             */
-             SPI_HandleTypeDef* HSPI;
+             * @brief HAL SPI handle pointer.
+             * @note - Only if the communication mode is SPI, this parameter need to be set; otherwise, leave it.
+             * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
+            */
+            SPI_HandleTypeDef* HSPI;
 
+            /**
+             * @brief TimerControl object pointer.
+             * @warning - Set The TimerControl object that want used for this object from outside of this object before using the init method of this object. 
+             *  */ 
             TimerControl* TIMER;
 
-            uint8_t COMMUNICATION_MODE;
-
+            /**
+             * @brief Encoder clock GPIO port. 
+             * @note - Only if the communication mode is GPIO, this parameter need to be set; otherwise, leave it.
+             * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
+             */
             GPIO_TypeDef* CLK_GPIO_PORT;
 
+            /**
+             * @brief Encoder data GPIO port. 
+             * @note - Only if the communication mode is GPIO, this parameter need to be set; otherwise, leave it.
+             * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
+             */
             GPIO_TypeDef* DATA_GPIO_PORT;
 
+            /**
+             * @brief Encoder clock GPIO pin. It can be GPIO_PIN_0, GPIO_PIN_1, ... 
+             * @note - Only if the communication mode is GPIO, this parameter need to be set; otherwise, leave it.
+             * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
+             */
             uint16_t CLK_GPIO_PIN;
 
+            /**
+             * @brief Encoder data GPIO pin. It can be GPIO_PIN_0, GPIO_PIN_1, ... 
+             * @note - Only if the communication mode is GPIO, this parameter need to be set; otherwise, leave it.
+             * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
+             */
             uint16_t DATA_GPIO_PIN;
 
             /**
@@ -176,6 +215,9 @@ class EncoderSSI
              *  */               
             double FLTA;     
 
+            /**
+             * @brief Mapping enable/disable of encoder data.
+             */
             bool MAP_ENA;
 
             /**
@@ -248,10 +290,20 @@ class EncoderSSI
         }value;
 
         /** 
-         * @brief EncoderSSI constructor. Set encoder resolution and spi mode. Not apply setting.
+         * @brief EncoderSSI constructor. Set encoder resolution and communication mode. Not apply setting.
+         * @param communication_mode: refers to how data is read.
+         * 
+         * - A value of 0 means the clock and data are provided by SPI communication. (Default value)
+         * 
+         * - A value of 1 means the clock and data are provided by raw GPIO digital input/output signal communication.
+         * 
+         * - Other value not acceptable and it set to default value of 0.
+         * 
+         * - This parameter can only be set when the object is created and cannot be changed during the object's lifetime.
          * @note init() method needs after this for apply setting on hardware.
+         * @warning Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
         */      
-        EncoderSSI();
+        EncoderSSI(uint8_t communication_mode = 0);
 
         /// @brief Destructor.
         ~EncoderSSI();
@@ -285,26 +337,48 @@ class EncoderSSI
 
     private:
 
+        /**
+         * @brief Communication mode refers to how data is read.
+         * @note - A value of 0 means the clock and data are provided by SPI communication.
+         * @note - A value of 1 means the clock and data are provided by raw GPIO digital input/output signal communication.
+         * @note - This parameter can only be set when the object is created and cannot be changed during the object's lifetime.
+         */
+        uint8_t _communicationMode;
+
         double _virtualOffset;
 
-        double _posRawDegPast;                   ///! @brief Buffer for angleInput
+        /**
+         * @brief Buffer for angleInput
+         *  */ 
+        double _posRawDegPast;                   
 
-        uint64_t _T;                                ///! @brief [us]. Time at update method. used for derivative and low pass filter calculations.
+        /**
+         * @brief [us]. Time at update method. used for derivative and low pass filter calculations.
+         */
+        uint64_t _T;                                
 
         uint64_t _TRate;
 
         double _posForRate;
 
-        EncoderSSI_Namespace::LPF _LPFR;   ///! @brief Low pass filter for rate value channel 1.
+        /**
+         * @brief Low pass filter for rate value.
+         *  */ 
+        EncoderSSI_Namespace::LPF _LPFR;   
 
-        EncoderSSI_Namespace::LPF _LPFA;   ///! @brief Low pass filter for angle value channel 1.
+        /**
+         * @brief Low pass filter for angle value.
+         *  */ 
+        EncoderSSI_Namespace::LPF _LPFA;   
 
         /** 
-         * @brief Read raw value for certain channel. Calculate and update values of posRawStep and posRawDeg.
-         * @param channel: channel number. Can be 1 or 2.   
+         * @brief Read raw value in SPI mode. Calculate and update values of posRawStep and posRawDeg.
         */
         void _readAngle_spi(void);
 
+        /** 
+         * @brief Read raw value in GPIO mode. Calculate and update values of posRawStep and posRawDeg.
+        */
         void _readAngle_gpio(void);
 
         /**
@@ -313,6 +387,9 @@ class EncoderSSI
          */
         bool _checkParameters(void);
 
+        /**
+         * @brief Map angle of encoder to certain range.
+         */
         double _mapAngleToCustomRange(double angle, double minRange, double maxRange);
 
 };

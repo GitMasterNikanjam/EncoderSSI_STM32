@@ -88,11 +88,17 @@ void LPF::clear(void)
 // ###############################################################################################
 // LotusEncoderSSI class
 
-EncoderSSI::EncoderSSI()
+EncoderSSI::EncoderSSI(uint8_t communication_mode)
 {    
-    _virtualOffset = 0;
+    if(communication_mode <= 1)
+    {
+        _communicationMode = communication_mode;
+    }
+    else
+    {
+        _communicationMode = 0;
+    }
 
-    parameters.COMMUNICATION_MODE = 0;
     parameters.CLK_GPIO_PORT = nullptr;
     parameters.DATA_GPIO_PORT = nullptr;
     parameters.CLK_GPIO_PIN = GPIO_PIN_0;
@@ -109,13 +115,7 @@ EncoderSSI::EncoderSSI()
     parameters.MAP_MAX = 0;
     parameters.MAP_MIN = 0;
 
-    value.posDeg = 0;
-    value.posRawDeg = 0;
-    value.posRawStep = 0;
-    value.velDegSec = 0;
-
-    value.revolutionCounter = 0;
-    _posRawDegPast = 0;
+    clean();
 }
 
 EncoderSSI::~EncoderSSI()
@@ -127,14 +127,6 @@ bool EncoderSSI::init(void)
 {
     if(_checkParameters() == false)
     {
-        return false;
-    }
-
-    _virtualOffset = 0;
-
-    if(parameters.HSPI->Instance == NULL)
-    {
-        errorMessage = "Error EncoderSSI: SPI handle instance is null.";
         return false;
     }
 
@@ -156,6 +148,8 @@ bool EncoderSSI::init(void)
         return false;
     }
 
+    _T = parameters.TIMER->micros();
+    
     return true;
 }
 
@@ -187,7 +181,7 @@ void EncoderSSI::_readAngle_spi(void)
     rawDataStep = (rawDataStep >> (24 - parameters.RESOLUTION - 1));   // Clear extera bits.
 
     rawDataDeg = (double)rawDataStep / pow(2, (double)parameters.RESOLUTION) * 360.0;
-    
+
     value.posRawStep = rawDataStep;
     _posRawDegPast = value.posRawDeg;
     value.posRawDeg = rawDataDeg;
@@ -257,12 +251,12 @@ void EncoderSSI::update(void)
 bool EncoderSSI::setPresetValueDeg(double data)
 {
     parameters.TIMER->delayMicroseconds(100);
-    switch(parameters.COMMUNICATION_MODE)
+    switch(_communicationMode)
     {
-        case 0:
+        case EncoderSSI_COM_Mode_SPI:
             _readAngle_spi();
         break;
-        case 1:
+        case EncoderSSI_COM_Mode_GPIO:
 
         break;
     }
@@ -274,20 +268,41 @@ bool EncoderSSI::setPresetValueDeg(double data)
 
 void EncoderSSI::clean(void)
 {
-    for(int i = 0; i <= 1; i++)
-    {
-        value.posDeg = 0;
-        value.posRawDeg = 0;
-        value.posRawStep = 0;
-        value.velDegSec = 0;
+    value.posDeg = 0;
+    value.posRawDeg = 0;
+    value.posRawStep = 0;
+    value.velDegSec = 0;
+    value.revolutionCounter = 0;
 
-        value.revolutionCounter = 0;
-        _posRawDegPast = 0;
-    }
+    _virtualOffset = 0;
+    _posRawDegPast = 0;
+    _T = 0;
+    _TRate = 0;
+    _posForRate = 0;
 }
 
 bool EncoderSSI::_checkParameters(void)
 {
+    switch(_communicationMode)
+    {
+        case EncoderSSI_COM_Mode_SPI:
+            if(parameters.HSPI == nullptr)
+            {
+                errorMessage = "Error EncoderSSI: HAL SPI handle pointer can not be nullptr.";
+                return false;
+            }
+        break;
+        case EncoderSSI_COM_Mode_GPIO:
+            if( (parameters.CLK_GPIO_PORT == nullptr) || (parameters.DATA_GPIO_PORT == nullptr))
+            {
+                errorMessage = "Error EncoderSSI: GPIO port pointer for clock or data can not be nullptr.";
+                return false;
+            }
+        break;
+        default:
+            return false;
+    }
+    
     bool state;
 
     state = state && (parameters.FLTA >= 0) && (parameters.FLTA >= 0) &&
@@ -295,20 +310,15 @@ bool EncoderSSI::_checkParameters(void)
                      (parameters.RESOLUTION > 0) && (parameters.RESOLUTION <= 23) &&
                      (parameters.RESOLUTION > 0) && (parameters.RESOLUTION <= 23);
 
-
-
     if(state == false)
     {
-        errorMessage = "Error LotusEncoderSSI: One or some parameters are not correct.";
+        errorMessage = "Error EncoderSSI: One or some parameters are not correct.";
     }
 
-    for(int i = 0; i <= 1; ++i)
+    if( (parameters.MAP_ENA == true) && (parameters.MAP_MAX <= parameters.MAP_MIN) )
     {
-        if( (parameters.MAP_ENA == true) && (parameters.MAP_MAX == parameters.MAP_MIN) )
-        {
-            errorMessage = "Error LotusEncoderSSI: mapMax and mapMin can not equal when mapENA is true.";
-            return false;
-        }
+        errorMessage = "Error EncoderSSI: mapMax can not be equal or less than mapMin when mapENA is true.";
+        return false;
     }
     
     return true;

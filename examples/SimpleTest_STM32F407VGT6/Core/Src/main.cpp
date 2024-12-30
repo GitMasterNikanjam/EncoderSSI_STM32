@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "TimerControl.h"
+#include "EncoderSSI.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +46,8 @@ SPI_HandleTypeDef hspi3;
 TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
-
+TimerControl timer(&htim2);
+EncoderSSI encoder(0);
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -94,7 +96,13 @@ int main(void)
   MX_SPI3_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+  timer.setClockFrequency(84000000);
+  timer.init();
 
+  encoder.parameters.HSPI = &hspi3;
+  encoder.parameters.TIMER = &timer;
+
+  encoder.init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
