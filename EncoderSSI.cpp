@@ -105,9 +105,10 @@ EncoderSSI::EncoderSSI(uint8_t communication_mode)
     parameters.DATA_GPIO_PIN = GPIO_PIN_0;
     parameters.TIMER = nullptr;
     parameters.HSPI = nullptr;
-    parameters.FLTA = 0;
     parameters.FLTR = 0;
-    parameters.RESOLUTION = 17;
+    parameters.RESOLUTION_SINGLE_TURN = 17;
+    parameters.RESOLUTION_MULTI_TURN = 0;
+    parameters.DATA_FORAMT = EncoderSSI_DATA_FORMAT_BINARY;
     parameters.RATE_FRQ = 0;
     parameters.GEAR_RATIO = 1;
     parameters.POSRAW_OFFSET_DEG = 0;
@@ -130,21 +131,20 @@ bool EncoderSSI::init(void)
         return false;
     }
 
-    if (HAL_SPI_Init(parameters.HSPI) != HAL_OK) 
+    _totalResolution = parameters.RESOLUTION_MULTI_TURN + parameters.RESOLUTION_SINGLE_TURN;
+
+    if(_communicationMode == EncoderSSI_COM_Mode_SPI)
     {
-        errorMessage = "Error EncoderSSI: HAL_SPI_Init is not succeeded.";
-        return false;
+        if (HAL_SPI_Init(parameters.HSPI) != HAL_OK) 
+        {
+            errorMessage = "Error EncoderSSI: HAL_SPI_Init() is not succeeded.";
+            return false;
+        }
     }
-        
+    
     if(!_LPFR.setFrequency(parameters.FLTR) || !_LPFR.setFrequency(parameters.FLTR))
     {
         errorMessage = "Error LotusEncoderSSI: Filter frequency for rate is not correct value.";
-        return false;
-    }
-
-    if(!_LPFA.setFrequency(parameters.FLTA) || !_LPFA.setFrequency(parameters.FLTA))
-    {
-        errorMessage = "Error LotusEncoderSSI: Filter frequency for angle is not correct value.";
         return false;
     }
 
@@ -156,33 +156,33 @@ bool EncoderSSI::init(void)
 void EncoderSSI::_readAngle_spi(void)
 {
     // Reset value of reading data
-    char encoder_read_data[3] = {0, 0, 0};
+    uint8_t encoder_read_data[4] = {0, 0, 0, 0};
 
     // Transfer Dummy data for generate clock 
-    if(parameters.RESOLUTION > 16)
+    if(_totalResolution > 16)
     { 
-        HAL_SPI_TransmitReceive(parameters.HSPI, (uint8_t*)encoder_read_data, (uint8_t*)encoder_read_data, 3, HAL_MAX_DELAY);    
+        HAL_SPI_Receive(parameters.HSPI, (uint8_t*)encoder_read_data, 4, HAL_MAX_DELAY);    
     }
-    else if(parameters.RESOLUTION > 8)
+    else if(_totalResolution > 8)
     {
-        HAL_SPI_TransmitReceive(parameters.HSPI, (uint8_t*)encoder_read_data, (uint8_t*)encoder_read_data, 2, HAL_MAX_DELAY);
+        HAL_SPI_Receive(parameters.HSPI, (uint8_t*)encoder_read_data, 2, HAL_MAX_DELAY);
     }
     else
     {
-        HAL_SPI_TransmitReceive(parameters.HSPI, (uint8_t*)encoder_read_data, (uint8_t*)encoder_read_data, 1, HAL_MAX_DELAY);
+        HAL_SPI_Receive(parameters.HSPI, (uint8_t*)encoder_read_data, 1, HAL_MAX_DELAY);
     }
 
     encoder_read_data[0] = encoder_read_data[0] & 0b01111111;       // Clear first bit data for start communication.
 
-    uint32_t rawDataStep = 0;
+    // uint32_t rawDataStep = 0;
     double rawDataDeg = 0;
 
-    rawDataStep = (  (((uint32_t)encoder_read_data[0]) << 16) | ((uint32_t)encoder_read_data[1] << 8) | (((uint32_t)encoder_read_data[2])) );
-    rawDataStep = (rawDataStep >> (24 - parameters.RESOLUTION - 1));   // Clear extera bits.
+    // _rawDataStep = (  (((uint32_t)encoder_read_data[0]) << 16) | ((uint32_t)encoder_read_data[1] << 8) | (((uint32_t)encoder_read_data[2])) );
+    _rawDataStep = (  (((uint32_t)encoder_read_data[0]) << 24) | ((uint32_t)encoder_read_data[1] << 16) | ((uint32_t)encoder_read_data[2] << 8) | (((uint32_t)encoder_read_data[3])) );
+    _rawDataStep = (_rawDataStep >> 7);
+    rawDataDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
 
-    rawDataDeg = (double)rawDataStep / pow(2, (double)parameters.RESOLUTION) * 360.0;
-
-    value.posRawStep = rawDataStep;
+    value.posRawStep = _rawDataStep;
     _posRawDegPast = value.posRawDeg;
     value.posRawDeg = rawDataDeg;
 
@@ -220,26 +220,26 @@ void EncoderSSI::update(void)
     _readAngle_spi();
 
     double temp = ( (value.posRawDeg - parameters.POSRAW_OFFSET_DEG + value.revolutionCounter * 360.0) * parameters.GEAR_RATIO );
-    _LPFA.updateByTime(temp, dt);
+
     if(parameters.RATE_FRQ > 0)
     {
         double dt_rate = ((double)(T_now - _TRate) / 1000000.0);
 
         if( dt_rate >= (1.0 / parameters.RATE_FRQ) )
         {
-            value.velDegSec = (_LPFA.output - _posForRate) / dt_rate;
+            value.velDegSec = (temp - _posForRate) / dt_rate;
             value.velDegSec =  _LPFR.updateByTime(value.velDegSec, dt_rate);
             _TRate = T_now;
-            _posForRate = _LPFA.output;
+            _posForRate = temp;
         }
     }
     else
     {
-        value.velDegSec = (_LPFA.output - value.posDeg) / dt;
+        value.velDegSec = (temp - value.posDeg) / dt;
         value.velDegSec =  _LPFR.updateByTime(value.velDegSec, dt);
     }
     
-    value.posDeg = _LPFA.output;  
+    value.posDeg = temp;  
 
     if(parameters.MAP_ENA == true)
     {
@@ -279,6 +279,7 @@ void EncoderSSI::clean(void)
     _T = 0;
     _TRate = 0;
     _posForRate = 0;
+    _totalResolution = 0;
 }
 
 bool EncoderSSI::_checkParameters(void)
@@ -305,10 +306,10 @@ bool EncoderSSI::_checkParameters(void)
     
     bool state;
 
-    state = state && (parameters.FLTA >= 0) && (parameters.FLTA >= 0) &&
-                     (parameters.FLTR >= 0) && (parameters.FLTR >= 0) &&
-                     (parameters.RESOLUTION > 0) && (parameters.RESOLUTION <= 23) &&
-                     (parameters.RESOLUTION > 0) && (parameters.RESOLUTION <= 23);
+    state = state && (parameters.FLTR >= 0) && (parameters.FLTR >= 0) &&
+                     (parameters.DATA_FORAMT <= 1) && (parameters.RATE_FRQ >= 0) &&
+                     (parameters.RESOLUTION_SINGLE_TURN > 0) && (parameters.RESOLUTION_MULTI_TURN >= 0) &&
+                     ((parameters.RESOLUTION_SINGLE_TURN + parameters.RESOLUTION_MULTI_TURN) <= 23);
 
     if(state == false)
     {

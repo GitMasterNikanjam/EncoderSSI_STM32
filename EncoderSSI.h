@@ -49,6 +49,9 @@ namespace EncoderSSI_Namespace
 {
     #define EncoderSSI_COM_Mode_SPI     0
     #define EncoderSSI_COM_Mode_GPIO    1
+
+    #define EncoderSSI_DATA_FORMAT_BINARY   0
+    #define EncoderSSI_DATA_FORMAT_GRAY     1
 }
 
 // #######################################################################################
@@ -140,7 +143,7 @@ namespace EncoderSSI_Namespace
 
 }
 
-// #####################################################################################
+// ##############################################################################################
 // LotusEncoderSSI class 
 
 /**
@@ -148,6 +151,7 @@ namespace EncoderSSI_Namespace
  * @brief EncoderSSI class.
  * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
  * @warning - Set The TimerControl object that want used for this object from outside of this object before using the init method of this object. 
+ * @note The default SSI data output format is binary.
  *  */ 
 class EncoderSSI
 {
@@ -176,6 +180,12 @@ class EncoderSSI
             TimerControl* TIMER;
 
             /**
+             * @brief SSI output data format. It can be binary or gray format.
+             * @note - Its value can be -> 0:EncoderSSI_DATA_FORMAT_BINARY, 1:EncoderSSI_DATA_FORMAT_GRAY
+             */
+            uint8_t DATA_FORAMT;
+
+            /**
              * @brief Encoder clock GPIO port. 
              * @note - Only if the communication mode is GPIO, this parameter need to be set; otherwise, leave it.
              * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
@@ -183,18 +193,18 @@ class EncoderSSI
             GPIO_TypeDef* CLK_GPIO_PORT;
 
             /**
-             * @brief Encoder data GPIO port. 
-             * @note - Only if the communication mode is GPIO, this parameter need to be set; otherwise, leave it.
-             * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
-             */
-            GPIO_TypeDef* DATA_GPIO_PORT;
-
-            /**
              * @brief Encoder clock GPIO pin. It can be GPIO_PIN_0, GPIO_PIN_1, ... 
              * @note - Only if the communication mode is GPIO, this parameter need to be set; otherwise, leave it.
              * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
              */
             uint16_t CLK_GPIO_PIN;
+
+            /**
+             * @brief Encoder data GPIO port. 
+             * @note - Only if the communication mode is GPIO, this parameter need to be set; otherwise, leave it.
+             * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
+             */
+            GPIO_TypeDef* DATA_GPIO_PORT;
 
             /**
              * @brief Encoder data GPIO pin. It can be GPIO_PIN_0, GPIO_PIN_1, ... 
@@ -207,13 +217,7 @@ class EncoderSSI
              * @brief Cut off frequency parameter of low pass filter for rate value. [Hz]
              * @note The value of 0 means it is disabled. 
              *  */ 
-            double FLTR;   
-
-            /**
-             * @brief Cut off frequency parameter of low pass filter for angle value. [Hz].
-             * @note The value of 0 means it is disabled.   
-             *  */               
-            double FLTA;     
+            double FLTR;    
 
             /**
              * @brief Mapping enable/disable of encoder data.
@@ -231,10 +235,16 @@ class EncoderSSI
             double MAP_MAX;
             
             /**
-             * @brief Encoder single turn resolution.
+             * @brief Encoder single turn part resolution.
              * @note It must be lower than 23 bit single turn.
              *  */                  
-            uint8_t RESOLUTION;         
+            uint8_t RESOLUTION_SINGLE_TURN;     
+
+            /**
+             * @brief Encoder multi turn part resolution.
+             * @note It must be lower than 23 bit multi turn.
+             *  */                  
+            uint8_t RESOLUTION_MULTI_TURN;      
 
             /**
              * @brief Offset value channel 1 and 2 for raw angle measurement. [deg]
@@ -300,7 +310,8 @@ class EncoderSSI
          * - Other value not acceptable and it set to default value of 0.
          * 
          * - This parameter can only be set when the object is created and cannot be changed during the object's lifetime.
-         * @note init() method needs after this for apply setting on hardware.
+         * @note - init() method needs after this for apply setting on hardware.
+         * @note - The default SSI data output format is binary.
          * @warning Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
         */      
         EncoderSSI(uint8_t communication_mode = 0);
@@ -335,6 +346,8 @@ class EncoderSSI
         */
         void clean(void);
 
+        uint32_t getRawDataStep(void) {return _rawDataStep;};
+
     private:
 
         /**
@@ -361,15 +374,14 @@ class EncoderSSI
 
         double _posForRate;
 
+        uint8_t _totalResolution;
+
+        uint32_t _rawDataStep;
+
         /**
          * @brief Low pass filter for rate value.
          *  */ 
         EncoderSSI_Namespace::LPF _LPFR;   
-
-        /**
-         * @brief Low pass filter for angle value.
-         *  */ 
-        EncoderSSI_Namespace::LPF _LPFA;   
 
         /** 
          * @brief Read raw value in SPI mode. Calculate and update values of posRawStep and posRawDeg.
