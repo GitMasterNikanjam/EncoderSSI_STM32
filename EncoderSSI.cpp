@@ -96,7 +96,7 @@ EncoderSSI::EncoderSSI(uint8_t communication_mode)
     }
     else
     {
-        _communicationMode = 0;
+        _communicationMode = EncoderSSI_COM_Mode_SPI;
     }
 
     parameters.CLK_GPIO_PORT = nullptr;
@@ -115,6 +115,9 @@ EncoderSSI::EncoderSSI(uint8_t communication_mode)
     parameters.MAP_ENA = false;
     parameters.MAP_MAX = 0;
     parameters.MAP_MIN = 0;
+    parameters.RATE_ENA = false;
+    parameters.SPI_MODE = 3;
+    parameters.SPI_BAUDRATE_PRESCALER = SPI_BAUDRATEPRESCALER_256;
 
     clean();
 }
@@ -133,35 +136,76 @@ bool EncoderSSI::init(void)
 
     _totalResolution = parameters.RESOLUTION_MULTI_TURN + parameters.RESOLUTION_SINGLE_TURN;
 
+    if(parameters.RESOLUTION_MULTI_TURN > 0)
+    {
+        _fullPosDegRange = pow(2, (double)parameters.RESOLUTION_MULTI_TURN) * 360.0; 
+    }
+    else if(parameters.RESOLUTION_MULTI_TURN == 0)
+    {
+        _fullPosDegRange = 360;
+    }
+
+    _halfPosDegRange = _fullPosDegRange / 2.0;
+
     if(_communicationMode == EncoderSSI_COM_Mode_SPI)
     {
+        switch(parameters.SPI_MODE)
+        {
+            case 0:
+                parameters.HSPI->Init.CLKPolarity = SPI_POLARITY_LOW;
+                parameters.HSPI->Init.CLKPhase = SPI_PHASE_1EDGE;
+            break;
+            case 1:
+                parameters.HSPI->Init.CLKPolarity = SPI_POLARITY_LOW;
+                parameters.HSPI->Init.CLKPhase = SPI_PHASE_2EDGE;
+            break;
+            case 2:
+                parameters.HSPI->Init.CLKPolarity = SPI_POLARITY_HIGH;
+                parameters.HSPI->Init.CLKPhase = SPI_PHASE_1EDGE;
+            break;
+            case 3:
+                parameters.HSPI->Init.CLKPolarity = SPI_POLARITY_HIGH;
+                parameters.HSPI->Init.CLKPhase = SPI_PHASE_2EDGE;
+            break;
+        }
+
+        parameters.HSPI->Init.BaudRatePrescaler = parameters.SPI_BAUDRATE_PRESCALER;
+
         if (HAL_SPI_Init(parameters.HSPI) != HAL_OK) 
         {
             errorMessage = "Error EncoderSSI: HAL_SPI_Init() is not succeeded.";
             return false;
         }
     }
-    
-    if(!_LPFR.setFrequency(parameters.FLTR) || !_LPFR.setFrequency(parameters.FLTR))
+    /*
+    else if(_communicationMode = EncoderSSI_COM_Mode_GPIO)
     {
-        errorMessage = "Error LotusEncoderSSI: Filter frequency for rate is not correct value.";
-        return false;
-    }
 
-    _T = parameters.TIMER->micros();
+    }
+    */
+    if(parameters.RATE_ENA == true)
+    {
+        if(!_LPFR.setFrequency(parameters.FLTR) || !_LPFR.setFrequency(parameters.FLTR))
+        {
+            errorMessage = "Error LotusEncoderSSI: Filter frequency for rate is not correct value.";
+            return false;
+        }
+
+        _T = parameters.TIMER->micros();
+    }
     
     return true;
 }
 
-void EncoderSSI::_readAngle_spi(void)
+void EncoderSSI::_readRaw_spi(void)
 {
     // Reset value of reading data
-    uint8_t encoder_read_data[4] = {0, 0, 0, 0};
+    uint8_t encoder_read_data[3] = {0, 0, 0};
 
     // Transfer Dummy data for generate clock 
     if(_totalResolution > 16)
     { 
-        HAL_SPI_Receive(parameters.HSPI, (uint8_t*)encoder_read_data, 4, HAL_MAX_DELAY);    
+        HAL_SPI_Receive(parameters.HSPI, (uint8_t*)encoder_read_data, 3, HAL_MAX_DELAY);    
     }
     else if(_totalResolution > 8)
     {
@@ -174,26 +218,14 @@ void EncoderSSI::_readAngle_spi(void)
 
     encoder_read_data[0] = encoder_read_data[0] & 0b01111111;       // Clear first bit data for start communication.
 
-    // uint32_t rawDataStep = 0;
     double rawDataDeg = 0;
 
-    // _rawDataStep = (  (((uint32_t)encoder_read_data[0]) << 16) | ((uint32_t)encoder_read_data[1] << 8) | (((uint32_t)encoder_read_data[2])) );
-    _rawDataStep = (  (((uint32_t)encoder_read_data[0]) << 24) | ((uint32_t)encoder_read_data[1] << 16) | ((uint32_t)encoder_read_data[2] << 8) | (((uint32_t)encoder_read_data[3])) );
-    _rawDataStep = (_rawDataStep >> 7);
+    uint32_t _rawDataStep = (  (((uint32_t)encoder_read_data[0]) << 16) | ((uint32_t)encoder_read_data[1] << 8) | (((uint32_t)encoder_read_data[2])) );
+    _rawDataStep = (_rawDataStep >> (24 - (_totalResolution + 1)));
     rawDataDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
 
     value.posRawStep = _rawDataStep;
-    _posRawDegPast = value.posRawDeg;
     value.posRawDeg = rawDataDeg;
-
-    if( (value.posRawDeg - _posRawDegPast) < -180 ) 
-    {
-        value.revolutionCounter++;
-    }
-    else if( ((value.posRawDeg - _posRawDegPast) > 180) && (_posRawDegPast != 0))
-    {
-        value.revolutionCounter--;
-    }
 }
 
 double EncoderSSI::_mapAngleToCustomRange(double angle, double minRange, double maxRange) 
@@ -217,35 +249,45 @@ void EncoderSSI::update(void)
         return;
     }
 
-    _readAngle_spi();
+    _readRaw_spi();
 
-    double temp = ( (value.posRawDeg - parameters.POSRAW_OFFSET_DEG + value.revolutionCounter * 360.0) * parameters.GEAR_RATIO );
+    double temp = ( (value.posRawDeg - parameters.POSRAW_OFFSET_DEG + value.overFlowCounter * _fullPosDegRange) * parameters.GEAR_RATIO );
 
-    if(parameters.RATE_FRQ > 0)
+    if(parameters.RATE_ENA == true)
     {
-        double dt_rate = ((double)(T_now - _TRate) / 1000000.0);
-
-        if( dt_rate >= (1.0 / parameters.RATE_FRQ) )
+        if(parameters.RATE_FRQ > 0)
         {
-            value.velDegSec = (temp - _posForRate) / dt_rate;
-            value.velDegSec =  _LPFR.updateByTime(value.velDegSec, dt_rate);
-            _TRate = T_now;
-            _posForRate = temp;
+            double dt_rate = ((double)(T_now - _TRate) / 1000000.0);
+
+            if( dt_rate >= (1.0 / parameters.RATE_FRQ) )
+            {
+                value.velDegSec = (temp - value.posDeg) / dt_rate;
+                value.velDegSec =  _LPFR.updateByTime(value.velDegSec, dt_rate);
+                _TRate = T_now;
+            }
+        }
+        else
+        {
+            value.velDegSec = (temp - value.posDeg) / dt;
+            value.velDegSec =  _LPFR.updateByTime(value.velDegSec, dt);
         }
     }
-    else
-    {
-        value.velDegSec = (temp - value.posDeg) / dt;
-        value.velDegSec =  _LPFR.updateByTime(value.velDegSec, dt);
-    }
     
-    value.posDeg = temp;  
+    // if( (temp - value.posDeg) < -_halfPosDegRange ) 
+    // {
+    //     value.overFlowCounter++;
+    // }
+    // else if( ((temp - value.posDeg) > _halfPosDegRange) && (_posDegPast != 0))
+    // {
+    //     value.overFlowCounter--;
+    // }  
 
     if(parameters.MAP_ENA == true)
     {
-        value.posDeg = _mapAngleToCustomRange(value.posDeg, parameters.MAP_MIN, parameters.MAP_MAX);
+        temp = _mapAngleToCustomRange(temp, parameters.MAP_MIN, parameters.MAP_MAX);
     }
-    
+
+    value.posDeg = temp;
 }
 
 bool EncoderSSI::setPresetValueDeg(double data)
@@ -254,14 +296,14 @@ bool EncoderSSI::setPresetValueDeg(double data)
     switch(_communicationMode)
     {
         case EncoderSSI_COM_Mode_SPI:
-            _readAngle_spi();
+            _readRaw_spi();
         break;
         case EncoderSSI_COM_Mode_GPIO:
 
         break;
     }
 
-    parameters.POSRAW_OFFSET_DEG = value.posRawDeg - data;
+    parameters.POSRAW_OFFSET_DEG = value.posRawDeg - data / parameters.GEAR_RATIO;
 
     return true;
 }
@@ -272,13 +314,11 @@ void EncoderSSI::clean(void)
     value.posRawDeg = 0;
     value.posRawStep = 0;
     value.velDegSec = 0;
-    value.revolutionCounter = 0;
+    value.overFlowCounter = 0;
 
-    _virtualOffset = 0;
-    _posRawDegPast = 0;
+    _posDegPast = 0;
     _T = 0;
     _TRate = 0;
-    _posForRate = 0;
     _totalResolution = 0;
 }
 
@@ -307,6 +347,7 @@ bool EncoderSSI::_checkParameters(void)
     bool state;
 
     state = state && (parameters.FLTR >= 0) && (parameters.FLTR >= 0) &&
+                     (parameters.SPI_MODE <= 3) &&
                      (parameters.DATA_FORAMT <= 1) && (parameters.RATE_FRQ >= 0) &&
                      (parameters.RESOLUTION_SINGLE_TURN > 0) && (parameters.RESOLUTION_MULTI_TURN >= 0) &&
                      ((parameters.RESOLUTION_SINGLE_TURN + parameters.RESOLUTION_MULTI_TURN) <= 23);

@@ -47,8 +47,8 @@
  *  */ 
 namespace EncoderSSI_Namespace
 {
-    #define EncoderSSI_COM_Mode_SPI     0
-    #define EncoderSSI_COM_Mode_GPIO    1
+    #define EncoderSSI_COM_Mode_SPI         0
+    #define EncoderSSI_COM_Mode_GPIO        1
 
     #define EncoderSSI_DATA_FORMAT_BINARY   0
     #define EncoderSSI_DATA_FORMAT_GRAY     1
@@ -175,6 +175,7 @@ class EncoderSSI
 
             /**
              * @brief TimerControl object pointer.
+             * @note - Only if the RATE_ENA be true, this parameter need to be set; otherwise, leave it.
              * @warning - Set The TimerControl object that want used for this object from outside of this object before using the init method of this object. 
              *  */ 
             TimerControl* TIMER;
@@ -214,6 +215,25 @@ class EncoderSSI
             uint16_t DATA_GPIO_PIN;
 
             /**
+             * @brief Standard SPI mode for encoder data. usually it is mode3: CPOL=1, PHASE=1   
+             * @note The spiMode value must be one of these: 0, 1, 2, or 3.
+             * 
+             * @note SPI mode 0: CPOL=0, CPHA=0  
+             * 
+             * @note SPI mode 1: CPOL=0, CPHA=1  
+             * 
+             * @note SPI mode 2: CPOL=1, CPHA=0  
+             * 
+             * @note SPI mode 3: CPOL=1, CPHA=1  
+             *  */       
+            uint8_t SPI_MODE; 
+
+            /**
+             * @brief SPI baudrate prescaler. It can be SPI_BAUDRATEPRESCALER_2, SPI_BAUDRATEPRESCALER_4, ... .
+             */
+            uint32_t SPI_BAUDRATE_PRESCALER;
+
+            /**
              * @brief Cut off frequency parameter of low pass filter for rate value. [Hz]
              * @note The value of 0 means it is disabled. 
              *  */ 
@@ -221,16 +241,19 @@ class EncoderSSI
 
             /**
              * @brief Mapping enable/disable of encoder data.
+             * @note Mapping is an operation for mapping raw positions (in degrees) within a specific position domain.
              */
             bool MAP_ENA;
 
             /**
              * @brief The value of Map for minimum angle calculations. [deg]
+             * @note Mapping is an operation for mapping raw positions (in degrees) within a specific position domain.
              */
             double MAP_MIN;
 
             /**
              * @brief The value of Map for maximum angle calculations. [deg]
+             * @note Mapping is an operation for mapping raw positions (in degrees) within a specific position domain.
              */
             double MAP_MAX;
             
@@ -242,21 +265,27 @@ class EncoderSSI
 
             /**
              * @brief Encoder multi turn part resolution.
-             * @note It must be lower than 23 bit multi turn.
+             * @note - It must be lower than 23 bit multi turn.
+             * @note - For single turn encoders this parameter must be 0.
              *  */                  
             uint8_t RESOLUTION_MULTI_TURN;      
 
             /**
-             * @brief Offset value channel 1 and 2 for raw angle measurement. [deg]
+             * @brief Offset value for raw angle measurement. [deg]
              * @note Initial value is 0.
              *  */ 
             double POSRAW_OFFSET_DEG;            
 
             /**
              * @brief Gearbox ratio for angle measurement.
-             * @note posDeg = posDeg * gearRatio.
+             * @note output_posDeg = posDeg * gearRatio.
              *  */  
             double GEAR_RATIO;
+
+            /**
+             * @brief Enable/disable rate calculations. The value of true means rate calculations enabled.
+             */
+            bool RATE_ENA;
 
             /**
              * @brief The frequency of rate measurements derived from position data. [Hz]
@@ -272,31 +301,31 @@ class EncoderSSI
         struct ValuesStructure
         {
             /**
-             * @brief Raw encoder value for channel 1 and 2. [-]
+             * @brief Raw encoder value. [Step]
              * @note Max value depend on resolution.
              *  */ 
             uint32_t posRawStep;                 
 
              /**
-             * @brief Encoder shaft angle for channel 1 and 2. [deg].
-             * @note posRawDeg = (posRawStep / max_posRawStep) * 360
+             * @brief Encoder shaft angle. [deg].
+             * @note posRawDeg = (posRawStep / max_posRawStep_singleTurn) * 360
              *  */ 
             double posRawDeg;     
 
             /**
-             * @brief Position angle for channel 1 and 2. [deg]
-             * @note posDeg = (posRawDeg - posRawOffsetDeg + _revolutionCounter * 360.0) * gearRatio.
+             * @brief Position angle. [deg]
+             * @note posDeg = (posRawDeg - posRawOffsetDeg + overFlowCounter * _fullRange) * gearRatio.
              *  */ 
             double posDeg;                     
 
             /**
-             * @brief Velocity for channel 1 and 2. [deg/s].
+             * @brief Velocity. [deg/s].
              * @note velDegSec = d(posDeg)/dt 
              *  */      
             double velDegSec;   
 
             ///! @brief Number of cross over from overflow for posRawStep since object created.                
-            int32_t revolutionCounter;             
+            int32_t overFlowCounter;             
         }value;
 
         /** 
@@ -307,46 +336,43 @@ class EncoderSSI
          * 
          * - A value of 1 means the clock and data are provided by raw GPIO digital input/output signal communication.
          * 
-         * - Other value not acceptable and it set to default value of 0.
+         * - Other value not acceptable and it set to default value of SPI mode.
          * 
          * - This parameter can only be set when the object is created and cannot be changed during the object's lifetime.
          * @note - init() method needs after this for apply setting on hardware.
          * @note - The default SSI data output format is binary.
          * @warning Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
         */      
-        EncoderSSI(uint8_t communication_mode = 0);
+        EncoderSSI(uint8_t communication_mode = EncoderSSI_COM_Mode_SPI);
 
         /// @brief Destructor.
         ~EncoderSSI();
 
         /** 
-         * @brief Init/Setup then Apply setting on hardware. Start LotusEncoderSSI action.
+         * @brief Init/Setup then Apply setting on hardware.
          * @return true if succeeded.
         */
         bool init(void);
 
         /**
          * @brief Read and update values.
+         * @note The rate is updated if RATE_ENA is true. Otherwise, only the position value is updated.
          */
         void update(void);
 
         /**
-         * @brief Set the PresetValue object that contains the desired absolute preset value. Writing this object executes a preset.
-         * The encoder internally calculates a preset offset value which is being stored in a non-volatile memory
-         * (no store command via CoE object 0x1010 required).
-         * @param value is desired step value for position at current position.  
-         * @return true if successed.
+         * @brief Set the PresetValue position [deg].
+         * @param value is desired output position value [deg] for position at current position.  
+         * @return true if succeeded.
          * @warning Use this function after setting direction rotation of encoder. Otherwise it maybe not correct set.
-         *  */  
+         *  */   
         bool setPresetValueDeg(double value);
 
         /**
-         * @brief Clean setting on hardware. Stop LotusEncoderSSI action. 
-         * Clear any buffer on output data.
+         * @brief Clean setting on hardware.
+         * @note Clear any buffer on output data.
         */
         void clean(void);
-
-        uint32_t getRawDataStep(void) {return _rawDataStep;};
 
     private:
 
@@ -358,25 +384,33 @@ class EncoderSSI
          */
         uint8_t _communicationMode;
 
-        double _virtualOffset;
-
         /**
-         * @brief Buffer for angleInput
+         * @brief Buffer for last position deg. [deg]
          *  */ 
-        double _posRawDegPast;                   
+        double _posDegPast;                   
 
         /**
          * @brief [us]. Time at update method. used for derivative and low pass filter calculations.
          */
         uint64_t _T;                                
 
+        /**
+         * @brief The time at rate calculation. [us]
+         */
         uint64_t _TRate;
 
-        double _posForRate;
-
+        /// @brief Total encoder resolution equal to single turn resolution + multi turn resolution. It must be lower than 23.
         uint8_t _totalResolution;
 
-        uint32_t _rawDataStep;
+        /**
+         * @brief The full range value for position. [deg]
+         */
+        double _fullPosDegRange;
+
+        /**
+         * @brief The half range value for position. [deg]
+         */
+        double _halfPosDegRange;
 
         /**
          * @brief Low pass filter for rate value.
@@ -386,12 +420,12 @@ class EncoderSSI
         /** 
          * @brief Read raw value in SPI mode. Calculate and update values of posRawStep and posRawDeg.
         */
-        void _readAngle_spi(void);
+        void _readRaw_spi(void);
 
         /** 
          * @brief Read raw value in GPIO mode. Calculate and update values of posRawStep and posRawDeg.
         */
-        void _readAngle_gpio(void);
+        void _readRawgpio(void);
 
         /**
          * @brief Check parameters validation.

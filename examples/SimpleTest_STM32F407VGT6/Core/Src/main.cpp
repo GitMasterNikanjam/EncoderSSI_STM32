@@ -49,7 +49,9 @@ TIM_HandleTypeDef htim2;
 /* USER CODE BEGIN PV */
 TimerControl timer(&htim2);
 EncoderSSI encoder(0);
-float pos = 0;
+double posdeg = 0, posRaw = 0;
+uint32_t posStep = 0;
+double vel = 0;
 int i = 0;
 /* USER CODE END PV */
 
@@ -104,19 +106,25 @@ int main(void)
   timer.setClockFrequency(84000000);
   timer.init();
   
-  encoder.parameters.HSPI = &hspi3;
+  encoder.parameters.HSPI = &hspi2;
   encoder.parameters.TIMER = &timer;
   encoder.parameters.RESOLUTION_SINGLE_TURN = 10;
   encoder.parameters.RESOLUTION_MULTI_TURN = 13;
   encoder.parameters.DATA_FORAMT = 0;
   encoder.parameters.FLTR = 0;
+  encoder.parameters.RATE_ENA = true;
   encoder.parameters.GEAR_RATIO = 1;
-  encoder.parameters.MAP_ENA = false;
+  encoder.parameters.MAP_ENA = true;
+  encoder.parameters.MAP_MAX = 360 * pow(2.0, 6.0);
+  encoder.parameters.MAP_MIN = -360 * pow(2.0, 6.0);
   encoder.parameters.POSRAW_OFFSET_DEG = 0;
+  encoder.parameters.SPI_MODE = 1;
+  encoder.parameters.SPI_BAUDRATE_PRESCALER = SPI_BAUDRATEPRESCALER_128;
 
   timer.start();
   HAL_Delay(10);
   encoder.init();
+  // encoder.setPresetValueDeg(360);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -125,7 +133,10 @@ int main(void)
   {
     i = timer.micros();
     encoder.update();
-    pos = encoder.value.posDeg;
+    posdeg = encoder.value.posDeg;
+    posRaw = encoder.value.posRawDeg;
+    posStep = encoder.value.posRawStep;
+    vel = encoder.value.overFlowCounter;
     HAL_Delay(100);
     /* USER CODE END WHILE */
 
@@ -203,11 +214,11 @@ static void MX_SPI2_Init(void)
   hspi2.Init.Mode = SPI_MODE_MASTER;
   hspi2.Init.Direction = SPI_DIRECTION_2LINES_RXONLY;
   hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi2.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi2.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi2.Init.CRCPolynomial = 10;
@@ -241,10 +252,10 @@ static void MX_SPI3_Init(void)
   hspi3.Init.Mode = SPI_MODE_MASTER;
   hspi3.Init.Direction = SPI_DIRECTION_2LINES_RXONLY;
   hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi3.Init.CLKPolarity = SPI_POLARITY_HIGH;
-  hspi3.Init.CLKPhase = SPI_PHASE_2EDGE;
+  hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi3.Init.NSS = SPI_NSS_SOFT;
-  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
   hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -316,9 +327,9 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
