@@ -137,7 +137,7 @@ int main(void)
     posRaw = encoder.value.posRawDeg;
     posStep = encoder.value.posRawStep;
     vel = encoder.value.overFlowCounter;
-    HAL_Delay(100);
+    HAL_Delay(2);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
