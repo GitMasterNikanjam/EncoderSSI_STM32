@@ -173,7 +173,7 @@ bool EncoderSSI::init(void)
 
         if (HAL_SPI_Init(parameters.HSPI) != HAL_OK) 
         {
-            errorMessage = "Error EncoderSSI: HAL_SPI_Init() is not succeeded.";
+            sprintf(errorMessage, "HAL_SPI_Init() is not succeeded.");
             return false;
         }
     }
@@ -187,7 +187,7 @@ bool EncoderSSI::init(void)
     {
         if(!_LPFR.setFrequency(parameters.FLTR) || !_LPFR.setFrequency(parameters.FLTR))
         {
-            errorMessage = "Error LotusEncoderSSI: Filter frequency for rate is not correct value.";
+            sprintf(errorMessage, "Filter frequency for rate is not correct value.");
             return false;
         }
 
@@ -329,14 +329,14 @@ bool EncoderSSI::_checkParameters(void)
         case EncoderSSI_COM_Mode_SPI:
             if(parameters.HSPI == nullptr)
             {
-                errorMessage = "Error EncoderSSI: HAL SPI handle pointer can not be nullptr.";
+                sprintf(errorMessage, "HAL SPI handle pointer can not be nullptr.");
                 return false;
             }
         break;
         case EncoderSSI_COM_Mode_GPIO:
             if( (parameters.CLK_GPIO_PORT == nullptr) || (parameters.DATA_GPIO_PORT == nullptr))
             {
-                errorMessage = "Error EncoderSSI: GPIO port pointer for clock or data can not be nullptr.";
+                sprintf(errorMessage, "GPIO port pointer for clock or data can not be nullptr.");
                 return false;
             }
         break;
@@ -354,12 +354,12 @@ bool EncoderSSI::_checkParameters(void)
 
     if(state == false)
     {
-        errorMessage = "Error EncoderSSI: One or some parameters are not correct.";
+        sprintf(errorMessage, "Parameter validation");
     }
 
     if( (parameters.MAP_ENA == true) && (parameters.MAP_MAX <= parameters.MAP_MIN) )
     {
-        errorMessage = "Error EncoderSSI: mapMax can not be equal or less than mapMin when mapENA is true.";
+        sprintf(errorMessage, "Mapping parameters validation.");
         return false;
     }
     

@@ -157,8 +157,11 @@ class EncoderSSI
 {
     public:
 
-        /// @brief  Last error occurred for object.
-        std::string errorMessage;               
+        /**
+         * @brief  Last error occurred for object.
+         * @warning The message length is limited.
+         *  */ 
+        char errorMessage[100];               
 
         /**
          * @struct ParametersStructure
