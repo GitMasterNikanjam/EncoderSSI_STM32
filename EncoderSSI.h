@@ -291,7 +291,7 @@ class EncoderSSI
             bool RATE_ENA;
 
             /**
-             * @brief The frequency of rate measurements derived from position data. [Hz]
+             * @brief The sample rate measurements derived from position data. [Hz]
              * @note The value of 0 means it is disabled.
              */
             double RATE_FRQ;   
