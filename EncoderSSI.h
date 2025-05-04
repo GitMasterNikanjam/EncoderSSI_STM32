@@ -281,7 +281,8 @@ class EncoderSSI
 
             /**
              * @brief Gearbox ratio for angle measurement.
-             * @note output_posDeg = posDeg * gearRatio.
+             * @note - output_posDeg = posDeg * gearRatio.
+             * @note - The value of 0 means it is disabled.
              *  */  
             double GEAR_RATIO;
 

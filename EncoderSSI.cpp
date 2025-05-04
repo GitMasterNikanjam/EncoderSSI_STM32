@@ -235,7 +235,8 @@ double EncoderSSI::_mapAngleToCustomRange(double angle, double minRange, double 
     if (temp < 0) 
     { 
         temp += range; 
-    } return temp + minRange; 
+    } 
+    return temp + minRange; 
 }
 
 void EncoderSSI::update(void)
@@ -251,7 +252,7 @@ void EncoderSSI::update(void)
 
     _readRaw_spi();
 
-    double temp = ( (value.posRawDeg - parameters.POSRAW_OFFSET_DEG + value.overFlowCounter * _fullPosDegRange) * parameters.GEAR_RATIO );
+    double temp = (value.posRawDeg - parameters.POSRAW_OFFSET_DEG + value.overFlowCounter * _fullPosDegRange);
 
     if(parameters.RATE_ENA == true)
     {
@@ -284,10 +285,16 @@ void EncoderSSI::update(void)
 
     if(parameters.MAP_ENA == true)
     {
-        temp = _mapAngleToCustomRange(temp, parameters.MAP_MIN, parameters.MAP_MAX);
+        temp = _mapAngleToCustomRange(temp, parameters.MAP_MIN / parameters.GEAR_RATIO, parameters.MAP_MAX / parameters.GEAR_RATIO);
     }
 
     value.posDeg = temp;
+
+    if(parameters.GEAR_RATIO !=0)
+    {
+        value.posDeg = value.posDeg * parameters.GEAR_RATIO;
+        value.velDegSec = value.velDegSec * parameters.GEAR_RATIO;
+    }
 }
 
 bool EncoderSSI::setPresetValueDeg(double data)
