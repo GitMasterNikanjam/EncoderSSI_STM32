@@ -108,7 +108,7 @@ int main(void)
   
   encoder.parameters.HSPI = &hspi2;
   encoder.parameters.TIMER = &timer;
-  encoder.parameters.RESOLUTION_SINGLE_TURN = 14;
+  encoder.parameters.RESOLUTION_SINGLE_TURN = 13;
   encoder.parameters.RESOLUTION_MULTI_TURN = 0;
   encoder.parameters.DATA_FORAMT = 0;
   encoder.parameters.FLTR = 0;
@@ -118,7 +118,7 @@ int main(void)
   encoder.parameters.MAP_MAX = 360 * pow(2.0, 6.0);
   encoder.parameters.MAP_MIN = -360 * pow(2.0, 6.0);
   encoder.parameters.POSRAW_OFFSET_DEG = 0;
-  encoder.parameters.SPI_MODE = 0;
+  encoder.parameters.SPI_MODE = 3;
   encoder.parameters.SPI_BAUDRATE_PRESCALER = SPI_BAUDRATEPRESCALER_128;
 
   timer.start();
