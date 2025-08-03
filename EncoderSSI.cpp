@@ -60,7 +60,7 @@ double LPF::updateByFrequency(const double &input, const double &frq)
 
     output = (1.0 - _alpha) * output + _alpha * input;
 
-    return true;
+    return output;
 }
 
 bool LPF::setFrequency(const double &frq)
@@ -109,7 +109,7 @@ EncoderSSI::EncoderSSI(uint8_t communication_mode)
     parameters.RESOLUTION_SINGLE_TURN = 17;
     parameters.RESOLUTION_MULTI_TURN = 0;
     parameters.DATA_FORAMT = EncoderSSI_DATA_FORMAT_BINARY;
-    parameters.RATE_FRQ = 0;
+    parameters.RATE_SPS = 0;
     parameters.GEAR_RATIO = 1;
     parameters.POSRAW_OFFSET_DEG = 0;
     parameters.MAP_ENA = false;
@@ -242,37 +242,10 @@ double EncoderSSI::_mapAngleToCustomRange(double angle, double minRange, double 
 void EncoderSSI::update(void)
 {
     uint64_t T_now = parameters.TIMER->micros();
-    double dt = (double)(T_now - _T) / 1000000.0;
-    _T = T_now;
-
-    if(dt <= 0)
-    {
-        return;
-    }
 
     _readRaw_spi();
 
     double temp = (value.posRawDeg - parameters.POSRAW_OFFSET_DEG + value.overFlowCounter * _fullPosDegRange);
-
-    if(parameters.RATE_ENA == true)
-    {
-        if(parameters.RATE_FRQ > 0)
-        {
-            double dt_rate = ((double)(T_now - _TRate) / 1000000.0);
-
-            if( dt_rate >= (1.0 / parameters.RATE_FRQ) )
-            {
-                value.velDegSec = (temp - value.posDeg) / dt_rate;
-                value.velDegSec =  _LPFR.updateByTime(value.velDegSec, dt_rate);
-                _TRate = T_now;
-            }
-        }
-        else
-        {
-            value.velDegSec = (temp - value.posDeg) / dt;
-            value.velDegSec =  _LPFR.updateByTime(value.velDegSec, dt);
-        }
-    }
     
     // if( (temp - value.posDeg) < -_halfPosDegRange ) 
     // {
@@ -288,13 +261,43 @@ void EncoderSSI::update(void)
         temp = _mapAngleToCustomRange(temp, parameters.MAP_MIN / parameters.GEAR_RATIO, parameters.MAP_MAX / parameters.GEAR_RATIO);
     }
 
-    value.posDeg = temp;
-
     if(parameters.GEAR_RATIO !=0)
     {
-        value.posDeg = value.posDeg * parameters.GEAR_RATIO;
-        value.velDegSec = value.velDegSec * parameters.GEAR_RATIO;
+        temp = temp * parameters.GEAR_RATIO;
     }
+
+    if(parameters.RATE_ENA == true)
+    {
+        if(T_now > _TRate)
+        {
+            uint64_t dt_uint = (T_now - _TRate);
+            double dtRate = (double)dt_uint;
+            double frqRate = 1000000 / dtRate;
+            
+            if(parameters.RATE_SPS > 0)
+            {
+                if( frqRate <= parameters.RATE_SPS )
+                {
+                    value.velDegSec =  _LPFR.updateByFrequency((temp - _posDegPast) * frqRate, frqRate);
+                    _posDegPast = temp;
+                    _TRate = T_now;
+                }
+            }
+            else
+            {
+                value.velDegSec =  _LPFR.updateByFrequency((temp - value.posDeg) * frqRate, frqRate);
+                _TRate = T_now;
+                _posDegPast = temp;
+            }
+        }
+        else
+        {
+            _TRate = T_now;
+            _posDegPast = temp;
+        }  
+    }
+
+    value.posDeg = temp;
 }
 
 bool EncoderSSI::setPresetValueDeg(double data)
@@ -355,7 +358,7 @@ bool EncoderSSI::_checkParameters(void)
 
     state = state && (parameters.FLTR >= 0) && (parameters.FLTR >= 0) &&
                      (parameters.SPI_MODE <= 3) &&
-                     (parameters.DATA_FORAMT <= 1) && (parameters.RATE_FRQ >= 0) &&
+                     (parameters.DATA_FORAMT <= 1) && (parameters.RATE_SPS >= 0) &&
                      (parameters.RESOLUTION_SINGLE_TURN > 0) && (parameters.RESOLUTION_MULTI_TURN >= 0) &&
                      ((parameters.RESOLUTION_SINGLE_TURN + parameters.RESOLUTION_MULTI_TURN) <= 23);
 

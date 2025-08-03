@@ -295,7 +295,7 @@ class EncoderSSI
              * @brief The sample rate measurements derived from position data. [Hz]
              * @note The value of 0 means it is disabled.
              */
-            double RATE_FRQ;   
+            double RATE_SPS;   
         }parameters;
 
         /**
@@ -389,7 +389,7 @@ class EncoderSSI
         uint8_t _communicationMode;
 
         /**
-         * @brief Buffer for last position deg. [deg]
+         * @brief Buffer for last position deg for rate calculation. [deg]
          *  */ 
         double _posDegPast;                   
 
