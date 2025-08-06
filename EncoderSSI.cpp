@@ -106,6 +106,7 @@ EncoderSSI::EncoderSSI(uint8_t communication_mode)
     parameters.TIMER = nullptr;
     parameters.HSPI = nullptr;
     parameters.FLTR = 0;
+    parameters.FLTA = 0;
     parameters.RESOLUTION_SINGLE_TURN = 17;
     parameters.RESOLUTION_MULTI_TURN = 0;
     parameters.DATA_FORAMT = EncoderSSI_DATA_FORMAT_BINARY;
@@ -190,10 +191,11 @@ bool EncoderSSI::init(void)
             sprintf(errorMessage, "Filter frequency for rate is not correct value.");
             return false;
         }
-
-        _T = parameters.TIMER->micros();
     }
     
+    _LPFA.setFrequency(parameters.FLTA);
+    _T = parameters.TIMER->micros();
+
     return true;
 }
 
@@ -297,7 +299,21 @@ void EncoderSSI::update(void)
         }  
     }
 
-    value.posDeg = temp;
+    if(parameters.FLTA > 0)
+    {
+        if(T_now > _T)
+        {
+            uint64_t dt_uint = T_now - _T;
+            double dt_double = ((double)dt_uint) / 1000000.0;
+            value.posDeg = _LPFA.updateByTime(temp, dt_double);  
+        }
+    }
+    else
+    {
+        value.posDeg = temp;
+    }  
+
+    _T = T_now;
 }
 
 bool EncoderSSI::setPresetValueDeg(double data)
@@ -356,7 +372,7 @@ bool EncoderSSI::_checkParameters(void)
     
     bool state;
 
-    state = state && (parameters.FLTR >= 0) && (parameters.FLTR >= 0) &&
+    state = state && (parameters.FLTR >= 0) && (parameters.FLTA >= 0) &&
                      (parameters.SPI_MODE <= 3) &&
                      (parameters.DATA_FORAMT <= 1) && (parameters.RATE_SPS >= 0) &&
                      (parameters.RESOLUTION_SINGLE_TURN > 0) && (parameters.RESOLUTION_MULTI_TURN >= 0) &&

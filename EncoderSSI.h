@@ -243,6 +243,12 @@ class EncoderSSI
             double FLTR;    
 
             /**
+             * @brief Cut off frequency parameter of low pass filter for angle value. [Hz]
+             * @note The value of 0 means it is disabled. 
+             *  */ 
+            double FLTA;  
+
+            /**
              * @brief Mapping enable/disable of encoder data.
              * @note Mapping is an operation for mapping raw positions (in degrees) within a specific position domain.
              */
@@ -420,6 +426,11 @@ class EncoderSSI
          * @brief Low pass filter for rate value.
          *  */ 
         EncoderSSI_Namespace::LPF _LPFR;   
+
+        /**
+         * @brief Low pass filter for rate value.
+         *  */ 
+        EncoderSSI_Namespace::LPF _LPFA;  
 
         /** 
          * @brief Read raw value in SPI mode. Calculate and update values of posRawStep and posRawDeg.
