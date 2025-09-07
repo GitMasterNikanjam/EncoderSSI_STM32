@@ -119,6 +119,7 @@ EncoderSSI::EncoderSSI(uint8_t communication_mode)
     parameters.RATE_ENA = false;
     parameters.SPI_MODE = 3;
     parameters.SPI_BAUDRATE_PRESCALER = SPI_BAUDRATEPRESCALER_256;
+    parameters.GPIO_CLOCK_FRQ = 0;
 
     clean();
 }
@@ -178,12 +179,51 @@ bool EncoderSSI::init(void)
             return false;
         }
     }
-    /*
-    else if(_communicationMode = EncoderSSI_COM_Mode_GPIO)
+    else if(_communicationMode == EncoderSSI_COM_Mode_GPIO)
     {
+        if(RCC_GPIO_CLK_ENABLE(parameters.CLK_GPIO_PORT) == false)
+        {
+            sprintf(errorMessage, "RCC_GPIO_CLK_ENABLE() is not succeeded.");
+            return false;
+        }
 
+        if(RCC_GPIO_CLK_ENABLE(parameters.DATA_GPIO_PORT) == false)
+        {
+            sprintf(errorMessage, "RCC_GPIO_CLK_ENABLE() is not succeeded.");
+            return false;
+        }
+
+        GPIO_InitTypeDef GPIO_InitStruct = {0};
+        GPIO_InitStruct.Pin = parameters.CLK_GPIO_PIN;
+        GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;  // Normal push-pull output
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+        HAL_GPIO_Init(parameters.CLK_GPIO_PORT, &GPIO_InitStruct);
+
+        GPIO_InitStruct = {0};
+        GPIO_InitStruct.Pin = parameters.DATA_GPIO_PIN;
+        GPIO_InitStruct.Mode = GPIO_MODE_INPUT;  
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+        HAL_GPIO_Init(parameters.DATA_GPIO_PORT, &GPIO_InitStruct);
+
+        switch(parameters.SPI_MODE)
+        {
+            case 0:
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
+            break;
+            case 1:
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
+            break;
+            case 2:
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+            break;
+            case 3:
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+            break;
+        }
     }
-    */
+    
     if(parameters.RATE_ENA == true)
     {
         if(!_LPFR.setFrequency(parameters.FLTR) || !_LPFR.setFrequency(parameters.FLTR))
@@ -230,6 +270,106 @@ void EncoderSSI::_readRaw_spi(void)
     value.posRawDeg = rawDataDeg;
 }
 
+void EncoderSSI::_readRawgpio(void)
+{   
+    if((parameters.CLK_GPIO_PORT == nullptr) || (parameters.DATA_GPIO_PORT == nullptr) ||
+       (parameters.TIMER == nullptr))
+    {
+        return;
+    }
+
+    // Reset value of reading data
+    uint32_t encoder_read_data = 0;
+
+    uint32_t half_period_us = (1000000.0 / (2.0 * (double)parameters.GPIO_CLOCK_FRQ));  // Half-period in µs
+
+    for(int i = 0; i < (_totalResolution + 1); i++)
+    {
+        switch(parameters.SPI_MODE)
+        {
+            case 0:
+                // CLK HIGH
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+                parameters.TIMER->delayMicroseconds(half_period_us);
+
+                // Read DATA on rising edge (check your encoder datasheet!)
+                encoder_read_data <<= 1;
+                if (HAL_GPIO_ReadPin(parameters.DATA_GPIO_PORT, parameters.DATA_GPIO_PIN) == GPIO_PIN_SET)
+                {
+                    encoder_read_data |= 1;
+                }
+
+                // CLK LOW
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
+                parameters.TIMER->delayMicroseconds(half_period_us);
+
+                break;
+            case 1:
+                // CLK HIGH
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+                parameters.TIMER->delayMicroseconds(half_period_us);
+
+                // CLK LOW
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
+                parameters.TIMER->delayMicroseconds(half_period_us);
+
+                // Read DATA on rising edge (check your encoder datasheet!)
+                encoder_read_data <<= 1;
+                if (HAL_GPIO_ReadPin(parameters.DATA_GPIO_PORT, parameters.DATA_GPIO_PIN) == GPIO_PIN_SET)
+                {
+                    encoder_read_data |= 1;
+                }
+
+                break;
+            case 2:
+                // CLK LOW
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
+                parameters.TIMER->delayMicroseconds(half_period_us);
+
+                // Read DATA on rising edge (check your encoder datasheet!)
+                encoder_read_data <<= 1;
+                if (HAL_GPIO_ReadPin(parameters.DATA_GPIO_PORT, parameters.DATA_GPIO_PIN) == GPIO_PIN_SET)
+                {
+                    encoder_read_data |= 1;
+                }
+
+                // CLK HIGH
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+                parameters.TIMER->delayMicroseconds(half_period_us);
+
+                break;
+            case 3:
+                // CLK LOW
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
+                parameters.TIMER->delayMicroseconds(half_period_us);
+
+                // CLK HIGH
+                HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+                parameters.TIMER->delayMicroseconds(half_period_us);
+
+                // Read DATA on rising edge (check your encoder datasheet!)
+                encoder_read_data <<= 1;
+                if (HAL_GPIO_ReadPin(parameters.DATA_GPIO_PORT, parameters.DATA_GPIO_PIN) == GPIO_PIN_SET)
+                {
+                    encoder_read_data |= 1;
+                }
+
+                break;
+        }  
+    }
+
+    encoder_read_data = encoder_read_data & ~((uint32_t)1 << _totalResolution);       // Clear first bit data for start communication.
+
+    double rawDataDeg = 0;
+
+    uint32_t _rawDataStep = encoder_read_data;
+    // rawDataDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
+    rawDataDeg = ((double)_rawDataStep * 360.0) / (1 << parameters.RESOLUTION_SINGLE_TURN);
+
+    value.posRawStep = _rawDataStep;
+    value.posRawDeg = rawDataDeg;
+}
+
 double EncoderSSI::_mapAngleToCustomRange(double angle, double minRange, double maxRange) 
 { 
     double range = maxRange - minRange; 
@@ -241,11 +381,88 @@ double EncoderSSI::_mapAngleToCustomRange(double angle, double minRange, double 
     return temp + minRange; 
 }
 
+bool EncoderSSI::RCC_GPIO_CLK_ENABLE(GPIO_TypeDef *GPIO_PORT)
+{
+    if(GPIO_PORT == nullptr)
+    {
+        return false;
+    }
+
+    #ifdef GPIOA
+    if(GPIO_PORT == GPIOA)
+    {
+        __HAL_RCC_GPIOA_CLK_ENABLE();
+    }
+    #endif
+    #ifdef GPIOB
+    else if (GPIO_PORT == GPIOB)
+    {
+        __HAL_RCC_GPIOB_CLK_ENABLE();
+    }
+    #endif
+    #ifdef GPIOC
+    else if (GPIO_PORT == GPIOC)
+    {
+        __HAL_RCC_GPIOC_CLK_ENABLE();
+    }
+    #endif
+    #ifdef GPIOD
+    else if (GPIO_PORT == GPIOD)
+    {
+        __HAL_RCC_GPIOD_CLK_ENABLE();
+    }
+    #endif
+    #ifdef GPIOE
+    else if (GPIO_PORT == GPIOE)
+    {
+        __HAL_RCC_GPIOE_CLK_ENABLE();
+    }
+    #endif
+    #ifdef GPIOF
+    else if (GPIO_PORT == GPIOF)
+    {
+        __HAL_RCC_GPIOF_CLK_ENABLE();
+    }
+    #endif
+    #ifdef GPIOG
+    else if (GPIO_PORT == GPIOG)
+    {
+        __HAL_RCC_GPIOG_CLK_ENABLE();
+    }
+    #endif
+    #ifdef GPIOH
+    else if (GPIO_PORT == GPIOH)
+    {
+        __HAL_RCC_GPIOH_CLK_ENABLE();
+    }
+    #endif
+    #ifdef GPIOI
+    else if (GPIO_PORT == GPIOI)
+    {
+        __HAL_RCC_GPIOI_CLK_ENABLE();
+    }
+    #endif
+    else
+    {
+        return false;
+    }
+
+    return true;
+}
+
 void EncoderSSI::update(void)
 {
     uint64_t T_now = parameters.TIMER->micros();
 
-    _readRaw_spi();
+    switch(_communicationMode)
+    {
+        case EncoderSSI_COM_Mode_SPI:
+            _readRaw_spi();
+        break;
+        case EncoderSSI_COM_Mode_GPIO:
+            _readRawgpio();
+        break;
+    }
 
     double temp = (value.posRawDeg - parameters.POSRAW_OFFSET_DEG); 
 
@@ -316,7 +533,7 @@ bool EncoderSSI::setPresetValueDeg(double data)
             _readRaw_spi();
         break;
         case EncoderSSI_COM_Mode_GPIO:
-
+            _readRawgpio();
         break;
     }
 

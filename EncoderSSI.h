@@ -236,6 +236,8 @@ class EncoderSSI
              */
             uint32_t SPI_BAUDRATE_PRESCALER;
 
+            uint32_t GPIO_CLOCK_FRQ;
+
             /**
              * @brief Cut off frequency parameter of low pass filter for rate value. [Hz]
              * @note The value of 0 means it is disabled. 
@@ -450,5 +452,10 @@ class EncoderSSI
          */
         double _mapAngleToCustomRange(double angle, double minRange, double maxRange);
 
+        /**
+         * @brief Enable RCC GPIO PORT for certain port.
+         * @return true if successful.
+         */
+        bool RCC_GPIO_CLK_ENABLE(GPIO_TypeDef *GPIO_PORT);
 };
 
