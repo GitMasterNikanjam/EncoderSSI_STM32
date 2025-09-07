@@ -247,16 +247,7 @@ void EncoderSSI::update(void)
 
     _readRaw_spi();
 
-    double temp = (value.posRawDeg - parameters.POSRAW_OFFSET_DEG + value.overFlowCounter * _fullPosDegRange);
-    
-    // if( (temp - value.posDeg) < -_halfPosDegRange ) 
-    // {
-    //     value.overFlowCounter++;
-    // }
-    // else if( ((temp - value.posDeg) > _halfPosDegRange) && (_posDegPast != 0))
-    // {
-    //     value.overFlowCounter--;
-    // }  
+    double temp = (value.posRawDeg - parameters.POSRAW_OFFSET_DEG); 
 
     if(parameters.MAP_ENA == true)
     {
@@ -340,7 +331,6 @@ void EncoderSSI::clean(void)
     value.posRawDeg = 0;
     value.posRawStep = 0;
     value.velDegSec = 0;
-    value.overFlowCounter = 0;
 
     _posDegPast = 0;
     _T = 0;

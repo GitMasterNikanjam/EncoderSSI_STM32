@@ -324,7 +324,7 @@ class EncoderSSI
 
             /**
              * @brief Position angle. [deg]
-             * @note posDeg = (posRawDeg - posRawOffsetDeg + overFlowCounter * _fullRange) * gearRatio.
+             * @note posDeg = (posRawDeg - posRawOffsetDeg) * gearRatio.
              *  */ 
             double posDeg;                     
 
@@ -332,10 +332,7 @@ class EncoderSSI
              * @brief Velocity. [deg/s].
              * @note velDegSec = d(posDeg)/dt 
              *  */      
-            double velDegSec;   
-
-            ///! @brief Number of cross over from overflow for posRawStep since object created.                
-            int32_t overFlowCounter;             
+            double velDegSec;             
         }value;
 
         /** 
