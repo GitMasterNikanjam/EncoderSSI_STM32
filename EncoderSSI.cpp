@@ -88,17 +88,9 @@ void LPF::clear(void)
 // ###############################################################################################
 // LotusEncoderSSI class
 
-EncoderSSI::EncoderSSI(uint8_t communication_mode)
+EncoderSSI::EncoderSSI()
 {    
-    if(communication_mode <= 1)
-    {
-        _communicationMode = communication_mode;
-    }
-    else
-    {
-        _communicationMode = EncoderSSI_COM_Mode_SPI;
-    }
-
+    parameters.READ_MODE = EncoderSSI_COM_Mode_SPI;
     parameters.CLK_GPIO_PORT = nullptr;
     parameters.DATA_GPIO_PORT = nullptr;
     parameters.CLK_GPIO_PIN = GPIO_PIN_0;
@@ -149,7 +141,7 @@ bool EncoderSSI::init(void)
 
     _halfPosDegRange = _fullPosDegRange / 2.0;
 
-    if(_communicationMode == EncoderSSI_COM_Mode_SPI)
+    if(parameters.READ_MODE == EncoderSSI_COM_Mode_SPI)
     {
         switch(parameters.SPI_MODE)
         {
@@ -179,7 +171,7 @@ bool EncoderSSI::init(void)
             return false;
         }
     }
-    else if(_communicationMode == EncoderSSI_COM_Mode_GPIO)
+    else if(parameters.READ_MODE == EncoderSSI_COM_Mode_GPIO)
     {
         if(RCC_GPIO_CLK_ENABLE(parameters.CLK_GPIO_PORT) == false)
         {
@@ -454,7 +446,7 @@ void EncoderSSI::update(void)
 {
     uint64_t T_now = parameters.TIMER->micros();
 
-    switch(_communicationMode)
+    switch(parameters.READ_MODE)
     {
         case EncoderSSI_COM_Mode_SPI:
             _readRaw_spi();
@@ -527,7 +519,7 @@ void EncoderSSI::update(void)
 bool EncoderSSI::setPresetValueDeg(double data)
 {
     parameters.TIMER->delayMicroseconds(100);
-    switch(_communicationMode)
+    switch(parameters.READ_MODE)
     {
         case EncoderSSI_COM_Mode_SPI:
             _readRaw_spi();
@@ -557,7 +549,7 @@ void EncoderSSI::clean(void)
 
 bool EncoderSSI::_checkParameters(void)
 {
-    switch(_communicationMode)
+    switch(parameters.READ_MODE)
     {
         case EncoderSSI_COM_Mode_SPI:
             if(parameters.HSPI == nullptr)

@@ -170,6 +170,14 @@ class EncoderSSI
         struct ParametersStructure
         {
             /**
+             * @brief Communication mode refers to how data is read.
+             * @note - A value of 0 means the clock and data are provided by SPI communication.
+             * @note - A value of 1 means the clock and data are provided by raw GPIO digital input/output signal communication.
+             * @note - This parameter can only be set when the object is created and cannot be changed during the object's lifetime.
+             */
+            uint8_t READ_MODE;
+
+            /**
              * @brief HAL SPI handle pointer.
              * @note - Only if the communication mode is SPI, this parameter need to be set; otherwise, leave it.
              * @warning - Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
@@ -352,7 +360,7 @@ class EncoderSSI
          * @note - The default SSI data output format is binary.
          * @warning Set the MCU hardware SPI or GPIO communication from outside of this object before using the init method of this object.
         */      
-        EncoderSSI(uint8_t communication_mode = EncoderSSI_COM_Mode_SPI);
+        EncoderSSI();
 
         /// @brief Destructor.
         ~EncoderSSI();
@@ -384,14 +392,6 @@ class EncoderSSI
         void clean(void);
 
     private:
-
-        /**
-         * @brief Communication mode refers to how data is read.
-         * @note - A value of 0 means the clock and data are provided by SPI communication.
-         * @note - A value of 1 means the clock and data are provided by raw GPIO digital input/output signal communication.
-         * @note - This parameter can only be set when the object is created and cannot be changed during the object's lifetime.
-         */
-        uint8_t _communicationMode;
 
         /**
          * @brief Buffer for last position deg for rate calculation. [deg]
