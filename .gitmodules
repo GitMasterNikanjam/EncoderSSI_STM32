@@ -1,3 +1,0 @@
-[submodule "libraries/TimerControl_STM32"]
-	path = libraries/TimerControl_STM32
-	url = https://github.com/GitMasterNikanjam/TimerControl_STM32.git
