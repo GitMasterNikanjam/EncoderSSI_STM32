@@ -1,6 +1,8 @@
 Drivers/
 .vscode/
 mcu_select.h
+*.uvguix.*
+*.uvoptx
 *.o
 *.crf
 *.d
