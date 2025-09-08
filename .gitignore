@@ -13,3 +13,5 @@ mcu_select.h
 *.map
 *.sct
 *.dep
+*.scvd
+*.iex

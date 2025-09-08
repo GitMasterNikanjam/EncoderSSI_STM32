@@ -48,7 +48,7 @@ TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
 TimerControl timer(&htim2);
-EncoderSSI encoder(0);
+EncoderSSI encoder;
 double posdeg = 0, posRaw = 0;
 uint32_t posStep = 0;
 double vel = 0;
@@ -136,7 +136,7 @@ int main(void)
     posdeg = encoder.value.posDeg;
     posRaw = encoder.value.posRawDeg;
     posStep = encoder.value.posRawStep;
-    vel = encoder.value.overFlowCounter;
+    vel = encoder.value.velDegSec;
     HAL_Delay(2);
     /* USER CODE END WHILE */
 
