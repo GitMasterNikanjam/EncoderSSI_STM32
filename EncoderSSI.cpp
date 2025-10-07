@@ -12,6 +12,16 @@ using namespace EncoderSSI_Namespace;
 #define _2PI         6.283185307            // 2*3.14159 = 2*pi
 
 // ###############################################################################################
+
+/**
+ * @brief Make a bitmask with 'bits' ones (bits in [0..32]).
+ */
+static inline constexpr uint32_t makeMask(unsigned bits)
+{
+    return (bits >= 32) ? 0xFFFFFFFFu : ((1u << bits) - 1u);
+}
+
+// ###############################################################################################
 // LPF and LPFLimit class:
 
 LPF::LPF()
@@ -99,8 +109,11 @@ EncoderSSI::EncoderSSI()
     parameters.HSPI = nullptr;
     parameters.FLTR = 0;
     parameters.FLTA = 0;
+    parameters.FLTM = 0;  // median filter off by default
+    parameters.FLTS = 0;
     parameters.RESOLUTION_SINGLE_TURN = 17;
     parameters.RESOLUTION_MULTI_TURN = 0;
+    parameters.IGNORE_MULTI_TURN = false;
     parameters.DATA_FORAMT = EncoderSSI_DATA_FORMAT_BINARY;
     parameters.RATE_SPS = 0;
     parameters.GEAR_RATIO = 1;
@@ -112,6 +125,8 @@ EncoderSSI::EncoderSSI()
     parameters.SPI_MODE = 3;
     parameters.SPI_BAUDRATE_PRESCALER = SPI_BAUDRATEPRESCALER_256;
     parameters.GPIO_CLOCK_FRQ = 0;
+
+    _filterEnable = true;
 
     clean();
 }
@@ -228,6 +243,13 @@ bool EncoderSSI::init(void)
     _LPFA.setFrequency(parameters.FLTA);
     _T = parameters.TIMER->micros();
 
+    // --- Median filter configuration:
+    if(!_MED.setWindow(parameters.FLTM))
+    {
+        sprintf(errorMessage, "Median window invalid. Use 0 or {3,5,7,9}.");
+        return false;
+    }
+
     return true;
 }
 
@@ -256,6 +278,12 @@ void EncoderSSI::_readRaw_spi(void)
 
     uint32_t _rawDataStep = (  (((uint32_t)encoder_read_data[0]) << 16) | ((uint32_t)encoder_read_data[1] << 8) | (((uint32_t)encoder_read_data[2])) );
     _rawDataStep = (_rawDataStep >> (24 - (_totalResolution + 1)));
+
+    if(parameters.IGNORE_MULTI_TURN == true)
+    {
+        _rawDataStep = (_rawDataStep & makeMask(parameters.RESOLUTION_SINGLE_TURN));
+    }
+
     rawDataDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
 
     value.posRawStep = _rawDataStep;
@@ -355,6 +383,12 @@ void EncoderSSI::_readRawgpio(void)
     double rawDataDeg = 0;
 
     uint32_t _rawDataStep = encoder_read_data;
+
+    if(parameters.IGNORE_MULTI_TURN == true)
+    {
+        _rawDataStep = (_rawDataStep & makeMask(parameters.RESOLUTION_SINGLE_TURN));
+    }
+
     // rawDataDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
     rawDataDeg = ((double)_rawDataStep * 360.0) / (1 << parameters.RESOLUTION_SINGLE_TURN);
 
@@ -445,7 +479,7 @@ bool EncoderSSI::RCC_GPIO_CLK_ENABLE(GPIO_TypeDef *GPIO_PORT)
 void EncoderSSI::update(void)
 {
     uint64_t T_now = parameters.TIMER->micros();
-
+    
     switch(parameters.READ_MODE)
     {
         case EncoderSSI_COM_Mode_SPI:
@@ -467,6 +501,32 @@ void EncoderSSI::update(void)
     {
         temp = temp * parameters.GEAR_RATIO;
     }
+
+    if(_filterEnable == true)
+    {
+        if(parameters.FLTS > 0)
+        {
+            if(abs(temp - value.posDeg) > 1)
+            {
+                if(temp > value.posDeg)
+                {
+                    temp = value.posDeg + parameters.FLTS;
+                }
+                else
+                {
+                    temp = value.posDeg - parameters.FLTS;
+                }
+            }
+        }
+
+        // Apply median filter BEFORE low-pass if enabled
+        if(_MED.enabled())
+        {
+            temp = _MED.push(temp);
+        }
+    }
+    
+    
 
     if(parameters.RATE_ENA == true)
     {
@@ -499,13 +559,22 @@ void EncoderSSI::update(void)
         }  
     }
 
-    if(parameters.FLTA > 0)
+    if((parameters.FLTA > 0))
     {
         if(T_now > _T)
         {
             uint64_t dt_uint = T_now - _T;
             double dt_double = ((double)dt_uint) / 1000000.0;
-            value.posDeg = _LPFA.updateByTime(temp, dt_double);  
+
+            if(_filterEnable == true)
+            {
+                value.posDeg = _LPFA.updateByTime(temp, dt_double); 
+            }
+            else
+            {
+                _LPFA.setOutputDirect(temp);
+                value.posDeg = temp;
+            } 
         }
     }
     else
@@ -534,6 +603,11 @@ bool EncoderSSI::setPresetValueDeg(double data)
     return true;
 }
 
+void filterEnable(bool state)
+{
+
+}
+
 void EncoderSSI::clean(void)
 {
     value.posDeg = 0;
@@ -545,6 +619,8 @@ void EncoderSSI::clean(void)
     _T = 0;
     _TRate = 0;
     _totalResolution = 0;
+
+    _MED.clear();   // reset median filter buffer
 }
 
 bool EncoderSSI::_checkParameters(void)
@@ -569,17 +645,26 @@ bool EncoderSSI::_checkParameters(void)
             return false;
     }
     
-    bool state;
+    bool state = true;
 
     state = state && (parameters.FLTR >= 0) && (parameters.FLTA >= 0) &&
+                     (parameters.FLTS >= 0) &&
                      (parameters.SPI_MODE <= 3) &&
                      (parameters.DATA_FORAMT <= 1) && (parameters.RATE_SPS >= 0) &&
                      (parameters.RESOLUTION_SINGLE_TURN > 0) && (parameters.RESOLUTION_MULTI_TURN >= 0) &&
                      ((parameters.RESOLUTION_SINGLE_TURN + parameters.RESOLUTION_MULTI_TURN) <= 23);
 
-    if(state == false)
+    // Median window valid?
+    if( !(parameters.FLTM == 0 || parameters.FLTM == 3 ||
+        parameters.FLTM == 5 || parameters.FLTM == 7 || parameters.FLTM == 9) )
     {
-        sprintf(errorMessage, "Parameter validation");
+        state = false;
+    }
+
+    if(!state)
+    {
+        sprintf(errorMessage, "Parameter validation failed");
+        return false;
     }
 
     if( (parameters.MAP_ENA == true) && (parameters.MAP_MAX <= parameters.MAP_MIN) )

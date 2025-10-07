@@ -143,6 +143,58 @@ namespace EncoderSSI_Namespace
 
 }
 
+// ##############################################################
+// MedianFilter class (small, no dynamic allocation)
+class MedianFilter
+{
+public:
+    MedianFilter(): _n(0), _idx(0), _count(0) { clear(); }
+
+    // window: 0=disabled, otherwise must be odd 3–9
+    bool setWindow(uint8_t window)
+    {
+        if(window == 0) { _n = 0; clear(); return true; }
+        if( (window < 3) || (window > 9) || ((window % 2) == 0) )
+            return false;
+        _n = window;
+        clear();
+        return true;
+    }
+
+    // push new value and return median
+    double push(double x)
+    {
+        if(_n == 0) return x; // disabled
+        _buf[_idx] = x;
+        _idx = (_idx + 1) % _n;
+        if(_count < _n) _count++;
+
+        // simple selection sort (since n <= 9)
+        for(uint8_t i=0; i<_count; ++i) _tmp[i] = _buf[i];
+        for(uint8_t i=0; i<_count; ++i) {
+            uint8_t min_i = i;
+            for(uint8_t j=i+1; j<_count; ++j)
+                if(_tmp[j] < _tmp[min_i]) min_i = j;
+            double t = _tmp[i]; _tmp[i] = _tmp[min_i]; _tmp[min_i] = t;
+        }
+        return _tmp[_count/2];
+    }
+
+    void clear() {
+        for(uint8_t i=0;i<9;++i){ _buf[i]=0; _tmp[i]=0; }
+        _idx=0; _count=0;
+    }
+
+    bool enabled() const { return _n != 0; }
+
+private:
+    double _buf[9];
+    double _tmp[9];
+    uint8_t _n;
+    uint8_t _idx;
+    uint8_t _count;
+};
+
 // ##############################################################################################
 // LotusEncoderSSI class 
 
@@ -243,7 +295,10 @@ class EncoderSSI
              * @brief SPI baudrate prescaler. It can be SPI_BAUDRATEPRESCALER_2, SPI_BAUDRATEPRESCALER_4, ... .
              */
             uint32_t SPI_BAUDRATE_PRESCALER;
-
+            
+            /**
+             * @brief The clock frequency for read data in GPIO mode.[Hz]
+             */
             uint32_t GPIO_CLOCK_FRQ;
 
             /**
@@ -257,6 +312,17 @@ class EncoderSSI
              * @note The value of 0 means it is disabled. 
              *  */ 
             double FLTA;  
+            
+            /**
+             * @brief Median filter window size. 0=disabled, valid: 3,5,7,9   
+             * */
+            uint8_t FLTM;   
+            
+            /**
+             * @brief slewrate filter gain. 
+             * @note The value of 0 means it is disabled. 
+             */
+            double FLTS;
 
             /**
              * @brief Mapping enable/disable of encoder data.
@@ -287,7 +353,12 @@ class EncoderSSI
              * @note - It must be lower than 23 bit multi turn.
              * @note - For single turn encoders this parameter must be 0.
              *  */                  
-            uint8_t RESOLUTION_MULTI_TURN;      
+            uint8_t RESOLUTION_MULTI_TURN;     
+            
+            /**
+             * @brief Enable/Disbale ignore/clear multi turn bits from reading.
+             */
+            bool IGNORE_MULTI_TURN;
 
             /**
              * @brief Offset value for raw angle measurement. [deg]
@@ -385,6 +456,8 @@ class EncoderSSI
          *  */   
         bool setPresetValueDeg(double value);
 
+        void filterEnable(bool state) {_filterEnable = state;};
+
         /**
          * @brief Clean setting on hardware.
          * @note Clear any buffer on output data.
@@ -430,6 +503,11 @@ class EncoderSSI
          * @brief Low pass filter for rate value.
          *  */ 
         EncoderSSI_Namespace::LPF _LPFA;  
+        
+        /** @brief Median filter */
+        MedianFilter _MED;  
+
+        bool _filterEnable;
 
         /** 
          * @brief Read raw value in SPI mode. Calculate and update values of posRawStep and posRawDeg.
