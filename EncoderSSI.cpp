@@ -301,9 +301,9 @@ void EncoderSSI::_readRawgpio(void)
     // Reset value of reading data
     uint32_t encoder_read_data = 0;
 
-    uint32_t half_period_us = (1000000.0 / (2.0 * (double)parameters.GPIO_CLOCK_FRQ));  // Half-period in µs
+    uint32_t half_period_us = (uint32_t)(500000.0 / (float)parameters.GPIO_CLOCK_FRQ);  // Half-period in µs
 
-    for(int i = 0; i < (_totalResolution + 1); i++)
+    for(int i = 0; i <= _totalResolution; i++)
     {
         switch(parameters.SPI_MODE)
         {
@@ -378,7 +378,7 @@ void EncoderSSI::_readRawgpio(void)
         }  
     }
 
-    encoder_read_data = encoder_read_data & ~((uint32_t)1 << _totalResolution);       // Clear first bit data for start communication.
+    encoder_read_data = encoder_read_data & ~((uint32_t)0b1 << _totalResolution);       // Clear first bit data for start communication.
 
     double rawDataDeg = 0;
 
@@ -389,8 +389,8 @@ void EncoderSSI::_readRawgpio(void)
         _rawDataStep = (_rawDataStep & makeMask(parameters.RESOLUTION_SINGLE_TURN));
     }
 
-    // rawDataDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
-    rawDataDeg = ((double)_rawDataStep * 360.0) / (1 << parameters.RESOLUTION_SINGLE_TURN);
+    rawDataDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
+    // rawDataDeg = ((double)_rawDataStep * 360.0) / (1 << parameters.RESOLUTION_SINGLE_TURN);
 
     value.posRawStep = _rawDataStep;
     value.posRawDeg = rawDataDeg;

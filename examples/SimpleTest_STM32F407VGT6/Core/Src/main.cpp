@@ -49,10 +49,10 @@ TIM_HandleTypeDef htim2;
 /* USER CODE BEGIN PV */
 TimerControl timer(&htim2);
 EncoderSSI encoder;
-double posdeg = 0, posRaw = 0;
-uint32_t posStep = 0;
-double vel = 0;
-int i = 0;
+volatile double posdeg = 0, posRaw = 0;
+volatile uint32_t posStep = 0;
+volatile double vel = 0;
+volatile int i = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -106,24 +106,39 @@ int main(void)
   timer.setClockFrequency(84000000);
   timer.init();
   
-  encoder.parameters.HSPI = &hspi2;
+  encoder.parameters.HSPI = &hspi3;
+  encoder.parameters.CLK_GPIO_PORT = GPIOC;
+  encoder.parameters.CLK_GPIO_PIN = GPIO_PIN_10;;
+  encoder.parameters.DATA_GPIO_PORT = GPIOC;
+  encoder.parameters.DATA_GPIO_PIN = GPIO_PIN_11;
   encoder.parameters.TIMER = &timer;
-  encoder.parameters.RESOLUTION_SINGLE_TURN = 13;
-  encoder.parameters.RESOLUTION_MULTI_TURN = 0;
+  encoder.parameters.RESOLUTION_SINGLE_TURN = 10;
+  encoder.parameters.RESOLUTION_MULTI_TURN = 13;
   encoder.parameters.DATA_FORAMT = 0;
-  encoder.parameters.FLTR = 0;
   encoder.parameters.RATE_ENA = true;
   encoder.parameters.GEAR_RATIO = 1;
-  encoder.parameters.MAP_ENA = false;
-  encoder.parameters.MAP_MAX = 360 * pow(2.0, 6.0);
-  encoder.parameters.MAP_MIN = -360 * pow(2.0, 6.0);
+  encoder.parameters.MAP_ENA = true;
+  encoder.parameters.MAP_MAX = 180.0; // 360 * pow(2.0, 6.0);
+  encoder.parameters.MAP_MIN = -180.0; //-360 * pow(2.0, 6.0);
   encoder.parameters.POSRAW_OFFSET_DEG = 0;
   encoder.parameters.SPI_MODE = 3;
-  encoder.parameters.SPI_BAUDRATE_PRESCALER = SPI_BAUDRATEPRESCALER_128;
+  encoder.parameters.SPI_BAUDRATE_PRESCALER = SPI_BAUDRATEPRESCALER_64;
+  encoder.parameters.GPIO_CLOCK_FRQ = 200000;
+  encoder.parameters.READ_MODE = 1;
+  encoder.parameters.IGNORE_MULTI_TURN = true;
+  
+  // encoder.parameters.FLTR = 50;
+  // encoder.parameters.FLTA = 5;
+  // encoder.parameters.FLTM = 3;
+  // encoder.parameters.FLTS = 0;
 
   timer.start();
   HAL_Delay(10);
-  encoder.init();
+  if(encoder.init() == false)
+  {
+    while(1);
+  }
+
   // encoder.setPresetValueDeg(360);
   /* USER CODE END 2 */
 
@@ -137,7 +152,7 @@ int main(void)
     posRaw = encoder.value.posRawDeg;
     posStep = encoder.value.posRawStep;
     vel = encoder.value.velDegSec;
-    HAL_Delay(2);
+    HAL_Delay(100);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
