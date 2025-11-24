@@ -116,6 +116,7 @@ EncoderSSI::EncoderSSI()
     parameters.IGNORE_MULTI_TURN = false;
     parameters.DATA_FORAMT = EncoderSSI_DATA_FORMAT_BINARY;
     parameters.RATE_SPS = 0;
+    parameters.UPDATE_FRQ = 0;
     parameters.GEAR_RATIO = 1;
     parameters.POSRAW_OFFSET_DEG = 0;
     parameters.MAP_ENA = false;
@@ -480,6 +481,16 @@ void EncoderSSI::update(void)
 {
     uint64_t T_now = parameters.TIMER->micros();
     
+    uint64_t dt_u = (T_now >= _T) ? (T_now - _T) : (UINT64_MAX - _T + T_now + 1ULL);
+
+    if(parameters.UPDATE_FRQ != 0)
+    {
+        if(dt_u < (1000000.0 / parameters.UPDATE_FRQ))
+        {
+            return;
+        }
+    }
+    
     switch(parameters.READ_MODE)
     {
         case EncoderSSI_COM_Mode_SPI:
@@ -526,8 +537,6 @@ void EncoderSSI::update(void)
         }
     }
     
-    
-
     if(parameters.RATE_ENA == true)
     {
         if(T_now > _TRate)
@@ -650,7 +659,7 @@ bool EncoderSSI::_checkParameters(void)
     state = state && (parameters.FLTR >= 0) && (parameters.FLTA >= 0) &&
                      (parameters.FLTS >= 0) &&
                      (parameters.SPI_MODE <= 3) &&
-                     (parameters.DATA_FORAMT <= 1) && (parameters.RATE_SPS >= 0) &&
+                     (parameters.DATA_FORAMT <= 1) && (parameters.RATE_SPS >= 0) && (parameters.UPDATE_FRQ >= 0) &&
                      (parameters.RESOLUTION_SINGLE_TURN > 0) && (parameters.RESOLUTION_MULTI_TURN >= 0) &&
                      ((parameters.RESOLUTION_SINGLE_TURN + parameters.RESOLUTION_MULTI_TURN) <= 23);
 

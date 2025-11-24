@@ -382,7 +382,14 @@ class EncoderSSI
              * @brief The sample rate measurements derived from position data. [Hz]
              * @note The value of 0 means it is disabled.
              */
-            double RATE_SPS;   
+            double RATE_SPS; 
+            
+            /**
+             * @brief The max frequency for update() method. [Hz]
+             * @note The value of 0 means it is disabled.
+             */
+            float UPDATE_FRQ;
+
         }parameters;
 
         /**
