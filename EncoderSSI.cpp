@@ -291,6 +291,55 @@ void EncoderSSI::_readRaw_spi(void)
     value.posRawDeg = rawDataDeg;
 }
 
+void EncoderSSI::_readRawgpio_new(void)
+{
+    if((parameters.CLK_GPIO_PORT == nullptr) || (parameters.DATA_GPIO_PORT == nullptr) ||
+       (parameters.TIMER == nullptr))
+    {
+        return;
+    }
+
+    int ii=0;
+    int i=0;
+    int wait1 = 40;
+    int wait2 = 90;
+    uint8_t read_data_bit=0;
+    float temp_Encoder_R =0;
+    float Encoder_value=0;
+    uint32_t Encoder_R=0;
+
+    HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
+    for(ii=0;ii<=wait2;ii++);		
+    Encoder_R=0; //131072
+    
+    for(i=1;i<=14;i++){
+        //Encoder_R=Encoder_R<<1; 
+        HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+        for(ii=0;ii<=wait1;ii++);		//wait
+        HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
+        for(ii=0;ii<=wait2;ii++);		//wait
+        read_data_bit=HAL_GPIO_ReadPin(parameters.DATA_GPIO_PORT, parameters.DATA_GPIO_PIN);
+    
+        //Encoder_R=Encoder_R|read_data_bit;  // write one bit data
+    }
+    for(i=1;i<=10;i++){
+        Encoder_R=Encoder_R<<1; 
+        HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+        for(ii=0;ii<=wait1;ii++);		//wait
+        HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
+        for(ii=0;ii<=wait2;ii++);		//wait
+        read_data_bit=HAL_GPIO_ReadPin(parameters.DATA_GPIO_PORT, parameters.DATA_GPIO_PIN);
+    
+        Encoder_R=Encoder_R|read_data_bit;  // write one bit data
+    }
+    HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+    temp_Encoder_R=Encoder_R;
+    Encoder_value=(temp_Encoder_R*360.0/1024.0);
+
+    value.posRawStep = (double)temp_Encoder_R;
+    value.posRawDeg = (double)Encoder_value;
+}
+
 void EncoderSSI::_readRawgpio(void)
 {   
     if((parameters.CLK_GPIO_PORT == nullptr) || (parameters.DATA_GPIO_PORT == nullptr) ||
@@ -366,8 +415,8 @@ void EncoderSSI::_readRawgpio(void)
 
                 // CLK HIGH
                 HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
+                
                 parameters.TIMER->delayMicroseconds(half_period_us);
-
                 // Read DATA on rising edge (check your encoder datasheet!)
                 encoder_read_data <<= 1;
                 if (HAL_GPIO_ReadPin(parameters.DATA_GPIO_PORT, parameters.DATA_GPIO_PIN) == GPIO_PIN_SET)

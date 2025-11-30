@@ -526,6 +526,8 @@ class EncoderSSI
         */
         void _readRawgpio(void);
 
+        void _readRawgpio_new(void);
+
         /**
          * @brief Check parameters validation.
          * @return true if succeeded.
