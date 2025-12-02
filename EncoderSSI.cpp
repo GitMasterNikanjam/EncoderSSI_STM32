@@ -247,7 +247,7 @@ bool EncoderSSI::init(void)
     // --- Median filter configuration:
     if(!_MED.setWindow(parameters.FLTM))
     {
-        sprintf(errorMessage, "Median window invalid. Use 0 or {3,5,7,9}.");
+        sprintf(errorMessage, "Median window invalid. Use 0 or {3,5,7,9,11,15}.");
         return false;
     }
 
@@ -714,7 +714,7 @@ bool EncoderSSI::_checkParameters(void)
 
     // Median window valid?
     if( !(parameters.FLTM == 0 || parameters.FLTM == 3 ||
-        parameters.FLTM == 5 || parameters.FLTM == 7 || parameters.FLTM == 9) )
+        parameters.FLTM == 5 || parameters.FLTM == 7 || parameters.FLTM == 9 || parameters.FLTM == 11 || parameters.FLTM == 15) )
     {
         state = false;
     }

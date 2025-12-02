@@ -150,11 +150,11 @@ class MedianFilter
 public:
     MedianFilter(): _n(0), _idx(0), _count(0) { clear(); }
 
-    // window: 0=disabled, otherwise must be odd 3–9
+    // window: 0=disabled, otherwise must be odd 3–15
     bool setWindow(uint8_t window)
     {
         if(window == 0) { _n = 0; clear(); return true; }
-        if( (window < 3) || (window > 9) || ((window % 2) == 0) )
+        if( (window < 3) || (window > 15) || ((window % 2) == 0) )
             return false;
         _n = window;
         clear();
@@ -188,8 +188,8 @@ public:
     bool enabled() const { return _n != 0; }
 
 private:
-    double _buf[9];
-    double _tmp[9];
+    double _buf[15];
+    double _tmp[15];
     uint8_t _n;
     uint8_t _idx;
     uint8_t _count;
@@ -314,7 +314,7 @@ class EncoderSSI
             double FLTA;  
             
             /**
-             * @brief Median filter window size. 0=disabled, valid: 3,5,7,9   
+             * @brief Median filter window size. 0=disabled, valid: 3,5,7,9,11,15   
              * */
             uint8_t FLTM;   
             
