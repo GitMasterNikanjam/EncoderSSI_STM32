@@ -248,6 +248,12 @@ class EncoderSSI
              * @note - Its value can be -> 0:EncoderSSI_DATA_FORMAT_BINARY, 1:EncoderSSI_DATA_FORMAT_GRAY
              */
             uint8_t DATA_FORAMT;
+            
+            /**
+             * @brief Is data has start bit or not.
+             * @note A value of true means data has start bit.
+             */
+            bool START_BIT;
 
             /**
              * @brief Encoder clock GPIO port. 
@@ -525,8 +531,6 @@ class EncoderSSI
          * @brief Read raw value in GPIO mode. Calculate and update values of posRawStep and posRawDeg.
         */
         void _readRawgpio(void);
-
-        void _readRawgpio_new(void);
 
         /**
          * @brief Check parameters validation.

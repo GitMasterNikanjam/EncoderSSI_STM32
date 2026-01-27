@@ -13,6 +13,18 @@ using namespace EncoderSSI_Namespace;
 
 // ###############################################################################################
 
+static inline uint32_t grayToBinary32(uint32_t gray)
+{
+    // Standard XOR-folding conversion:
+    // b = g ^ (g>>1) ^ (g>>2) ^ ...
+    gray ^= (gray >> 16);
+    gray ^= (gray >> 8);
+    gray ^= (gray >> 4);
+    gray ^= (gray >> 2);
+    gray ^= (gray >> 1);
+    return gray;
+}
+
 /**
  * @brief Make a bitmask with 'bits' ones (bits in [0..32]).
  */
@@ -115,6 +127,7 @@ EncoderSSI::EncoderSSI()
     parameters.RESOLUTION_MULTI_TURN = 0;
     parameters.IGNORE_MULTI_TURN = false;
     parameters.DATA_FORAMT = EncoderSSI_DATA_FORMAT_BINARY;
+    parameters.START_BIT = true;
     parameters.RATE_SPS = 0;
     parameters.UPDATE_FRQ = 0;
     parameters.GEAR_RATIO = 1;
@@ -257,87 +270,60 @@ bool EncoderSSI::init(void)
 void EncoderSSI::_readRaw_spi(void)
 {
     // Reset value of reading data
-    uint8_t encoder_read_data[3] = {0, 0, 0};
+    uint8_t encoder_read_data[4] = {0, 0, 0, 0};
 
-    // Transfer Dummy data for generate clock 
-    if(_totalResolution > 16)
-    { 
-        HAL_SPI_Receive(parameters.HSPI, (uint8_t*)encoder_read_data, 3, HAL_MAX_DELAY);    
-    }
-    else if(_totalResolution > 8)
+    // Read enough bytes to cover (start_bit + position_bits)
+    // You read (totalResolution + 1) bits in your GPIO version, so do the same here.
+    uint8_t nBytes = 1;
+    if(_totalResolution > 24)      nBytes = 4;
+    else if(_totalResolution > 16) nBytes = 3;
+    else if(_totalResolution > 8)  nBytes = 2;
+    else                           nBytes = 1;
+
+    if(HAL_SPI_Receive(parameters.HSPI, encoder_read_data, nBytes, HAL_MAX_DELAY) != HAL_OK)
     {
-        HAL_SPI_Receive(parameters.HSPI, (uint8_t*)encoder_read_data, 2, HAL_MAX_DELAY);
+        // optional: set errorMessage, or just return
+        return;
     }
-    else
+
+    // Pack bytes into a 32-bit container MSB-first
+    uint32_t word =
+        (((uint32_t)encoder_read_data[0]) << 24) |
+        (((uint32_t)encoder_read_data[1]) << 16) |
+        (((uint32_t)encoder_read_data[2]) <<  8) |
+        (((uint32_t)encoder_read_data[3]) <<  0);
+
+    // Align the received bits to LSB.
+    // We have nBytes*8 total bits received, and want the top (totalResolution+1) bits (including start bit).
+    const uint8_t bitsRead = (uint8_t)(nBytes * 8);
+    const uint8_t frameBits = (uint8_t)(_totalResolution + 1);
+
+    // Shift right so frame lands in LSBs
+    word >>= (bitsRead - frameBits);
+
+
+    // Remove start bit by masking to only totalResolution position bits
+    if(parameters.START_BIT == true)
     {
-        HAL_SPI_Receive(parameters.HSPI, (uint8_t*)encoder_read_data, 1, HAL_MAX_DELAY);
+        word = word & makeMask(_totalResolution);
     }
 
-    encoder_read_data[0] = encoder_read_data[0] & 0b01111111;       // Clear first bit data for start communication.
+    uint32_t _rawDataStep = word;
+    
+    // Gray -> Binary if needed (convert the full position word, incl. multi-turn if present)
+    if(parameters.DATA_FORAMT == EncoderSSI_DATA_FORMAT_GRAY)
+    {
+        _rawDataStep = grayToBinary32(_rawDataStep);
+    }
 
-    double rawDataDeg = 0;
-
-    uint32_t _rawDataStep = (  (((uint32_t)encoder_read_data[0]) << 16) | ((uint32_t)encoder_read_data[1] << 8) | (((uint32_t)encoder_read_data[2])) );
-    _rawDataStep = (_rawDataStep >> (24 - (_totalResolution + 1)));
-
+    // Optionally ignore multi-turn bits AFTER conversion
     if(parameters.IGNORE_MULTI_TURN == true)
     {
         _rawDataStep = (_rawDataStep & makeMask(parameters.RESOLUTION_SINGLE_TURN));
     }
 
-    rawDataDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
-
     value.posRawStep = _rawDataStep;
-    value.posRawDeg = rawDataDeg;
-}
-
-void EncoderSSI::_readRawgpio_new(void)
-{
-    if((parameters.CLK_GPIO_PORT == nullptr) || (parameters.DATA_GPIO_PORT == nullptr) ||
-       (parameters.TIMER == nullptr))
-    {
-        return;
-    }
-
-    int ii=0;
-    int i=0;
-    int wait1 = 40;
-    int wait2 = 90;
-    uint8_t read_data_bit=0;
-    float temp_Encoder_R =0;
-    float Encoder_value=0;
-    uint32_t Encoder_R=0;
-
-    HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
-    for(ii=0;ii<=wait2;ii++);		
-    Encoder_R=0; //131072
-    
-    for(i=1;i<=14;i++){
-        //Encoder_R=Encoder_R<<1; 
-        HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
-        for(ii=0;ii<=wait1;ii++);		//wait
-        HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
-        for(ii=0;ii<=wait2;ii++);		//wait
-        read_data_bit=HAL_GPIO_ReadPin(parameters.DATA_GPIO_PORT, parameters.DATA_GPIO_PIN);
-    
-        //Encoder_R=Encoder_R|read_data_bit;  // write one bit data
-    }
-    for(i=1;i<=10;i++){
-        Encoder_R=Encoder_R<<1; 
-        HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
-        for(ii=0;ii<=wait1;ii++);		//wait
-        HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_RESET);
-        for(ii=0;ii<=wait2;ii++);		//wait
-        read_data_bit=HAL_GPIO_ReadPin(parameters.DATA_GPIO_PORT, parameters.DATA_GPIO_PIN);
-    
-        Encoder_R=Encoder_R|read_data_bit;  // write one bit data
-    }
-    HAL_GPIO_WritePin(parameters.CLK_GPIO_PORT, parameters.CLK_GPIO_PIN, GPIO_PIN_SET);
-    temp_Encoder_R=Encoder_R;
-    Encoder_value=(temp_Encoder_R*360.0/1024.0);
-
-    value.posRawStep = (double)temp_Encoder_R;
-    value.posRawDeg = (double)Encoder_value;
+    value.posRawDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
 }
 
 void EncoderSSI::_readRawgpio(void)
@@ -428,11 +414,20 @@ void EncoderSSI::_readRawgpio(void)
         }  
     }
 
-    encoder_read_data = encoder_read_data & ~((uint32_t)0b1 << _totalResolution);       // Clear first bit data for start communication.
-
+    if(parameters.START_BIT == true)
+    {
+        encoder_read_data = encoder_read_data & ~((uint32_t)0b1 << _totalResolution);       // Clear first bit data for start communication.
+    }
+    
     double rawDataDeg = 0;
 
     uint32_t _rawDataStep = encoder_read_data;
+
+    // Gray -> Binary if needed (convert full position word first)
+    if(parameters.DATA_FORAMT == EncoderSSI_DATA_FORMAT_GRAY)
+    {
+        _rawDataStep = grayToBinary32(_rawDataStep);
+    }
 
     if(parameters.IGNORE_MULTI_TURN == true)
     {
@@ -710,7 +705,7 @@ bool EncoderSSI::_checkParameters(void)
                      (parameters.SPI_MODE <= 3) &&
                      (parameters.DATA_FORAMT <= 1) && (parameters.RATE_SPS >= 0) && (parameters.UPDATE_FRQ >= 0) &&
                      (parameters.RESOLUTION_SINGLE_TURN > 0) && (parameters.RESOLUTION_MULTI_TURN >= 0) &&
-                     ((parameters.RESOLUTION_SINGLE_TURN + parameters.RESOLUTION_MULTI_TURN) <= 23);
+                     ((parameters.RESOLUTION_SINGLE_TURN + parameters.RESOLUTION_MULTI_TURN) <= 31);
 
     // Median window valid?
     if( !(parameters.FLTM == 0 || parameters.FLTM == 3 ||
