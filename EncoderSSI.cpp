@@ -247,7 +247,7 @@ bool EncoderSSI::init(void)
     
     if(parameters.RATE_ENA == true)
     {
-        if(!_LPFR.setFrequency(parameters.FLTR) || !_LPFR.setFrequency(parameters.FLTR))
+        if(!_LPFR.setFrequency(parameters.FLTR))
         {
             sprintf(errorMessage, "Filter frequency for rate is not correct value.");
             return false;
@@ -272,13 +272,13 @@ void EncoderSSI::_readRaw_spi(void)
     // Reset value of reading data
     uint8_t encoder_read_data[4] = {0, 0, 0, 0};
 
+    // total bits we need to capture from the SSI frame
+    const uint8_t frameBits = (uint8_t)(_totalResolution + (parameters.START_BIT ? 1 : 0));
+
     // Read enough bytes to cover (start_bit + position_bits)
     // You read (totalResolution + 1) bits in your GPIO version, so do the same here.
-    uint8_t nBytes = 1;
-    if(_totalResolution > 24)      nBytes = 4;
-    else if(_totalResolution > 16) nBytes = 3;
-    else if(_totalResolution > 8)  nBytes = 2;
-    else                           nBytes = 1;
+    uint8_t nBytes = (frameBits + 7) / 8;
+    if(nBytes > 4) nBytes = 4;
 
     if(HAL_SPI_Receive(parameters.HSPI, encoder_read_data, nBytes, HAL_MAX_DELAY) != HAL_OK)
     {
@@ -287,20 +287,17 @@ void EncoderSSI::_readRaw_spi(void)
     }
 
     // Pack bytes into a 32-bit container MSB-first
-    uint32_t word =
-        (((uint32_t)encoder_read_data[0]) << 24) |
-        (((uint32_t)encoder_read_data[1]) << 16) |
-        (((uint32_t)encoder_read_data[2]) <<  8) |
-        (((uint32_t)encoder_read_data[3]) <<  0);
+    uint32_t word = 0;
+    for(uint8_t i=0; i<nBytes; i++)
+        word = (word << 8) | encoder_read_data[i];
 
     // Align the received bits to LSB.
     // We have nBytes*8 total bits received, and want the top (totalResolution+1) bits (including start bit).
     const uint8_t bitsRead = (uint8_t)(nBytes * 8);
-    const uint8_t frameBits = (uint8_t)(_totalResolution + 1);
 
     // Shift right so frame lands in LSBs
-    word >>= (bitsRead - frameBits);
-
+    if(bitsRead > frameBits)
+        word >>= (bitsRead - frameBits);
 
     // Remove start bit by masking to only totalResolution position bits
     if(parameters.START_BIT == true)
@@ -336,9 +333,12 @@ void EncoderSSI::_readRawgpio(void)
 
     // Reset value of reading data
     uint32_t encoder_read_data = 0;
-
-    uint32_t half_period_us = (uint32_t)(500000.0 / (float)parameters.GPIO_CLOCK_FRQ);  // Half-period in µs
-
+    uint32_t half_period_us = 2;
+    if(parameters.GPIO_CLOCK_FRQ != 0)
+    {
+        uint32_t half_period_us = (uint32_t)(500000.0 / (float)parameters.GPIO_CLOCK_FRQ);  // Half-period in µs
+    }
+    
     for(int i = 0; i <= _totalResolution; i++)
     {
         switch(parameters.SPI_MODE)
@@ -523,6 +523,8 @@ bool EncoderSSI::RCC_GPIO_CLK_ENABLE(GPIO_TypeDef *GPIO_PORT)
 
 void EncoderSSI::update(void)
 {
+    if(_totalResolution == 0) return;
+
     uint64_t T_now = parameters.TIMER->micros();
     
     uint64_t dt_u = (T_now >= _T) ? (T_now - _T) : (UINT64_MAX - _T + T_now + 1ULL);
@@ -561,7 +563,7 @@ void EncoderSSI::update(void)
     {
         if(parameters.FLTS > 0)
         {
-            if(abs(temp - value.posDeg) > 1)
+            if(fabs(temp - value.posDeg) > 1)
             {
                 if(temp > value.posDeg)
                 {
@@ -656,11 +658,6 @@ bool EncoderSSI::setPresetValueDeg(double data)
     return true;
 }
 
-void filterEnable(bool state)
-{
-
-}
-
 void EncoderSSI::clean(void)
 {
     value.posDeg = 0;
@@ -671,7 +668,6 @@ void EncoderSSI::clean(void)
     _posDegPast = 0;
     _T = 0;
     _TRate = 0;
-    _totalResolution = 0;
 
     _MED.clear();   // reset median filter buffer
 }
