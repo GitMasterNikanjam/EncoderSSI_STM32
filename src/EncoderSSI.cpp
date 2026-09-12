@@ -336,10 +336,17 @@ void EncoderSSI::_readRawgpio(void)
     uint32_t half_period_us = 2;
     if(parameters.GPIO_CLOCK_FRQ != 0)
     {
-        uint32_t half_period_us = (uint32_t)(500000.0 / (float)parameters.GPIO_CLOCK_FRQ);  // Half-period in µs
+        half_period_us = static_cast<uint32_t>(500000.0 / static_cast<double>(parameters.GPIO_CLOCK_FRQ));  // Half-period in µs
+
+        if (half_period_us == 0U)
+        {
+            half_period_us = 1U;
+        }
     }
     
-    for(int i = 0; i <= _totalResolution; i++)
+    const uint8_t frameBits = static_cast<uint8_t>(_totalResolution + (parameters.START_BIT ? 1U : 0U));
+
+    for(uint8_t i = 0; i < frameBits; ++i)
     {
         switch(parameters.SPI_MODE)
         {
@@ -722,6 +729,12 @@ bool EncoderSSI::_checkParameters(void)
         return false;
     }
     
+    if (parameters.TIMER == nullptr)
+    {
+        sprintf(errorMessage, "Timer pointer cannot be nullptr.");
+        return false;
+    }
+
     return true;
 }
 
