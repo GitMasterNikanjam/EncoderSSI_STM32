@@ -54,6 +54,13 @@ namespace EncoderSSI_Namespace
     #define EncoderSSI_DATA_FORMAT_GRAY     1
 }
 
+// A missing encoder, an excessive SPI clock, or a bus fault must never block
+// the application forever.  The SSI frame is only a few bytes, so 5 ms gives
+// ample margin even at the slowest supported SPI prescaler.
+#ifndef EncoderSSI_SPI_TIMEOUT_MS
+    #define EncoderSSI_SPI_TIMEOUT_MS       5U
+#endif
+
 // #######################################################################################
 // LPF class:
 
@@ -458,8 +465,9 @@ class EncoderSSI
         /**
          * @brief Read and update values.
          * @note The rate is updated if RATE_ENA is true. Otherwise, only the position value is updated.
+         * @return true when a measurement was read and processed; false on a communication/configuration error.
          */
-        void update(void);
+        bool update(void);
 
         /**
          * @brief Set the PresetValue position [deg].
@@ -525,12 +533,12 @@ class EncoderSSI
         /** 
          * @brief Read raw value in SPI mode. Calculate and update values of posRawStep and posRawDeg.
         */
-        void _readRaw_spi(void);
+        bool _readRaw_spi(void);
 
         /** 
          * @brief Read raw value in GPIO mode. Calculate and update values of posRawStep and posRawDeg.
         */
-        void _readRawgpio(void);
+        bool _readRawgpio(void);
 
         /**
          * @brief Check parameters validation.
@@ -549,4 +557,3 @@ class EncoderSSI
          */
         bool RCC_GPIO_CLK_ENABLE(GPIO_TypeDef *GPIO_PORT);
 };
-

@@ -267,7 +267,7 @@ bool EncoderSSI::init(void)
     return true;
 }
 
-void EncoderSSI::_readRaw_spi(void)
+bool EncoderSSI::_readRaw_spi(void)
 {
     // Reset value of reading data
     uint8_t encoder_read_data[4] = {0, 0, 0, 0};
@@ -280,10 +280,12 @@ void EncoderSSI::_readRaw_spi(void)
     uint8_t nBytes = (frameBits + 7) / 8;
     if(nBytes > 4) nBytes = 4;
 
-    if(HAL_SPI_Receive(parameters.HSPI, encoder_read_data, nBytes, HAL_MAX_DELAY) != HAL_OK)
+    const HAL_StatusTypeDef status = HAL_SPI_Receive(parameters.HSPI, encoder_read_data, nBytes, EncoderSSI_SPI_TIMEOUT_MS);
+
+    if(status != HAL_OK)
     {
-        // optional: set errorMessage, or just return
-        return;
+        snprintf(errorMessage, sizeof(errorMessage), "HAL_SPI_Receive failed: status=%d error=0x%08lX.", static_cast<int>(status), static_cast<unsigned long>(parameters.HSPI->ErrorCode));
+        return false;
     }
 
     // Pack bytes into a 32-bit container MSB-first
@@ -321,14 +323,16 @@ void EncoderSSI::_readRaw_spi(void)
 
     value.posRawStep = _rawDataStep;
     value.posRawDeg = (double)_rawDataStep / pow(2, (double)parameters.RESOLUTION_SINGLE_TURN) * 360.0;
+
+    return true;
 }
 
-void EncoderSSI::_readRawgpio(void)
+bool EncoderSSI::_readRawgpio(void)
 {   
-    if((parameters.CLK_GPIO_PORT == nullptr) || (parameters.DATA_GPIO_PORT == nullptr) ||
-       (parameters.TIMER == nullptr))
+    if((parameters.CLK_GPIO_PORT == nullptr) || (parameters.DATA_GPIO_PORT == nullptr) || (parameters.TIMER == nullptr))
     {
-        return;
+        snprintf(errorMessage, sizeof(errorMessage), "GPIO encoder read parameters are invalid.");
+        return false;
     }
 
     // Reset value of reading data
@@ -446,6 +450,8 @@ void EncoderSSI::_readRawgpio(void)
 
     value.posRawStep = _rawDataStep;
     value.posRawDeg = rawDataDeg;
+
+    return true;
 }
 
 double EncoderSSI::_mapAngleToCustomRange(double angle, double minRange, double maxRange) 
@@ -528,9 +534,19 @@ bool EncoderSSI::RCC_GPIO_CLK_ENABLE(GPIO_TypeDef *GPIO_PORT)
     return true;
 }
 
-void EncoderSSI::update(void)
+bool EncoderSSI::update(void)
 {
-    if(_totalResolution == 0) return;
+    if(_totalResolution == 0)
+    {
+        snprintf(errorMessage, sizeof(errorMessage), "Encoder is not initialized.");
+        return false;
+    }
+
+    if(parameters.TIMER == nullptr)
+    {
+        snprintf(errorMessage, sizeof(errorMessage), "Encoder timer pointer is null.");
+        return false;
+    }
 
     uint64_t T_now = parameters.TIMER->micros();
     
@@ -540,18 +556,29 @@ void EncoderSSI::update(void)
     {
         if(dt_u < (1000000.0 / parameters.UPDATE_FRQ))
         {
-            return;
+            return true;
         }
     }
     
+    bool readOk = false;
     switch(parameters.READ_MODE)
     {
         case EncoderSSI_COM_Mode_SPI:
-            _readRaw_spi();
+            readOk = _readRaw_spi();
         break;
         case EncoderSSI_COM_Mode_GPIO:
-            _readRawgpio();
+            readOk = _readRawgpio();
         break;
+        default:
+            snprintf(errorMessage, sizeof(errorMessage), "Unsupported encoder read mode: %u.", static_cast<unsigned int>(parameters.READ_MODE));
+            return false;
+    }
+
+    if(!readOk)
+    {
+        // Keep the last valid position/rate.  A communication fault must not
+        // overwrite valid feedback with partially received data.
+        return false;
     }
 
     double temp = (value.posRawDeg - parameters.POSRAW_OFFSET_DEG); 
@@ -645,19 +672,29 @@ void EncoderSSI::update(void)
     }  
 
     _T = T_now;
+
+    return true;
 }
 
 bool EncoderSSI::setPresetValueDeg(double data)
 {
     parameters.TIMER->delayMicroseconds(100);
+    bool readOk = false;
     switch(parameters.READ_MODE)
     {
         case EncoderSSI_COM_Mode_SPI:
-            _readRaw_spi();
+            readOk = _readRaw_spi();
         break;
         case EncoderSSI_COM_Mode_GPIO:
-            _readRawgpio();
+            readOk = _readRawgpio();
         break;
+        default:
+            return false;
+    }
+
+    if(!readOk)
+    {
+        return false;
     }
 
     parameters.POSRAW_OFFSET_DEG = value.posRawDeg - data / parameters.GEAR_RATIO;
@@ -703,9 +740,30 @@ bool EncoderSSI::_checkParameters(void)
     
     bool state = true;
 
+    bool spiPrescalerValid = true;
+    if(parameters.READ_MODE == EncoderSSI_COM_Mode_SPI)
+    {
+        switch(parameters.SPI_BAUDRATE_PRESCALER)
+        {
+            case SPI_BAUDRATEPRESCALER_2:
+            case SPI_BAUDRATEPRESCALER_4:
+            case SPI_BAUDRATEPRESCALER_8:
+            case SPI_BAUDRATEPRESCALER_16:
+            case SPI_BAUDRATEPRESCALER_32:
+            case SPI_BAUDRATEPRESCALER_64:
+            case SPI_BAUDRATEPRESCALER_128:
+            case SPI_BAUDRATEPRESCALER_256:
+                break;
+            default:
+                spiPrescalerValid = false;
+                break;
+        }
+    }
+
     state = state && (parameters.FLTR >= 0) && (parameters.FLTA >= 0) &&
                      (parameters.FLTS >= 0) &&
                      (parameters.SPI_MODE <= 3) &&
+                     spiPrescalerValid &&
                      (parameters.DATA_FORAMT <= 1) && (parameters.RATE_SPS >= 0) && (parameters.UPDATE_FRQ >= 0) &&
                      (parameters.RESOLUTION_SINGLE_TURN > 0) && (parameters.RESOLUTION_MULTI_TURN >= 0) &&
                      ((parameters.RESOLUTION_SINGLE_TURN + parameters.RESOLUTION_MULTI_TURN) <= 31);
@@ -737,6 +795,3 @@ bool EncoderSSI::_checkParameters(void)
 
     return true;
 }
-
-
-
